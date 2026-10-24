@@ -657,9 +657,12 @@ runtime ${
   .scroll :global(.big.round) {
     border-radius: 50%;
   }
+  /* four covers in a 2 × 2 grid (two rows too: the tiles' pictures are absolute, so they'd collapse) */
   .scroll :global(.collage) {
     display: grid;
     grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    place-items: stretch;   /* .big centers its content; the tiles must fill their cells */
     background: var(--control);
   }
   .scroll :global(.tile) {
