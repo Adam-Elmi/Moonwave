@@ -5,16 +5,23 @@
 <p align="center">A music player that lets you download your favorite songs from YouTube.</p>
 
 <p align="center">
-  <img alt="Version 1.0.0" src="https://img.shields.io/badge/version-1.0.0-f06595">
+  <a href="https://github.com/Adam-Elmi/Moonwave/releases"><img alt="Version 1.0.0" src="https://img.shields.io/badge/version-1.0.0-f06595"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-2f9e44"></a>
-  <img alt="Platform: Linux" src="https://img.shields.io/badge/platform-Linux-2f343e?logo=linux&logoColor=white">
-  <img alt="Tauri 2" src="https://img.shields.io/badge/Tauri-2-24c8db?logo=tauri&logoColor=white">
-  <img alt="Rust" src="https://img.shields.io/badge/Rust-2024-b7410e?logo=rust&logoColor=white">
-  <img alt="ArcMoon" src="https://img.shields.io/badge/UI-ArcMoon-c2255c">
-  <img alt="yt-dlp" src="https://img.shields.io/badge/downloads-yt--dlp-ff0033?logo=youtube&logoColor=white">
+  <a href="https://github.com/torvalds/linux"><img alt="Platform: Linux" src="https://img.shields.io/badge/platform-Linux-2f343e?logo=linux&logoColor=white"></a>
+  <a href="https://github.com/tauri-apps/tauri"><img alt="Tauri 2" src="https://img.shields.io/badge/Tauri-2-24c8db?logo=tauri&logoColor=white"></a>
+  <a href="https://github.com/rust-lang/rust"><img alt="Rust" src="https://img.shields.io/badge/Rust-2024-b7410e?logo=rust&logoColor=white"></a>
+  <a href="https://github.com/Adam-Elmi/ArcMoon"><img alt="ArcMoon" src="https://img.shields.io/badge/UI-ArcMoon-c2255c"></a>
+  <a href="https://github.com/yt-dlp/yt-dlp"><img alt="yt-dlp" src="https://img.shields.io/badge/downloads-yt--dlp-ff0033?logo=youtube&logoColor=white"></a>
 </p>
 
 This is my personal music player. It plays my music folders, keeps my own lists, and lets me download my favorite songs from YouTube using [yt-dlp](https://github.com/yt-dlp/yt-dlp) and [ffmpeg](https://ffmpeg.org), straight into my library.
+
+<p align="center"><img src="docs/library.gif" width="100%" alt="Browsing: songs, albums, an album, artists and a list"></p>
+<p align="center"><img src="docs/now-playing.gif" width="100%" alt="Now Playing with live bars that move with the music"></p>
+<p align="center"><img src="docs/download.gif" width="100%" alt="Downloading a song: paste a link, check it, download"></p>
+<p align="center"><img src="docs/themes.gif" width="100%" alt="Dark and light themes"></p>
+
+<sub>Shown with a made-up sample library.</sub>
 
 ## Build
 
