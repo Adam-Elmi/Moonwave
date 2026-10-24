@@ -1,0 +1,69 @@
+# ###################
+# Release: builds Moonwave on Ubuntu 22.04 (its older system libraries make the packages run on
+# most Linux systems) and puts the AppImage, .deb and .rpm on a draft GitHub release, with the
+# notes from .github/release-notes.md. Runs when a tag like v1.0.0 is pushed, or by hand
+# (Actions → Release → Run workflow). The tests run first, so a broken build never ships.
+# The bundled tools (yt-dlp, ffmpeg) are fetched and checked by scripts/fetch-tools.sh
+# ###################
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System libraries for Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf build-essential libssl-dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install
+        run: npm ci
+
+      - name: Bundled tools (yt-dlp, ffmpeg, ffprobe)
+        run: ./scripts/fetch-tools.sh
+
+      - name: Tests
+        run: |
+          npm test
+          cd src-tauri && cargo test
+
+      - name: Release notes
+        id: notes
+        run: |
+          {
+            echo "body<<NOTES_END"
+            cat .github/release-notes.md
+            echo "NOTES_END"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and attach to a draft release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
+          releaseName: Moonwave ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
+          releaseBody: ${{ steps.notes.outputs.body }}
+          releaseDraft: true
+          prerelease: false
