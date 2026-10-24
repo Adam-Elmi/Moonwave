@@ -43,6 +43,10 @@ jobs:
       - name: Bundled tools (yt-dlp, ffmpeg, ffprobe)
         run: ./scripts/fetch-tools.sh
 
+      # the page first: Tauri's generate_context! reads dist/ (gitignored, so not in the checkout)
+      - name: Page
+        run: npm run build
+
       - name: Tests
         run: |
           npm test
