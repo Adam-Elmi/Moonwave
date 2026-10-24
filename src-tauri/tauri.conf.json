@@ -41,7 +41,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "category": "Audio",
+    "category": "Music",
     "externalBin": ["binaries/yt-dlp", "binaries/ffmpeg", "binaries/ffprobe"],
     "shortDescription": "A music player that lets you download your favorite songs from YouTube",
     "publisher": "Adam Elmi",
