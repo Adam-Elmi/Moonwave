@@ -1,0 +1,164 @@
+# ###################
+# AboutCard: who made Moonwave, its version (from package.json, so it never goes stale), what
+# it's for, what it's built with, and its repository (opens in the browser: Tauri's opener, or a
+# new tab in a plain browser). Opened from the ⓘ button in the title bar; ×, Esc or a click
+# outside closes it
+# ###################
+${
+  import { readFileSync } from "node:fs";
+  const logo = readFileSync(new URL("../../moonwave-logo.svg", import.meta.url), "utf8").replace(/<!--[\s\S]*?-->/g, "").replace(/id="([a-z]+)"/g, 'id="about-$1"').replace(/url\(#([a-z]+)\)/g, "url(#about-$1)");
+  const { version } = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
+  const REPO = "https://github.com/Adam-Elmi/Moonwave";
+}$
+
+runtime ${
+  import { aboutOpen, closeAbout } from "../lib/about.js";
+
+  const openLink = (e) => {
+    const opener = window.__TAURI__?.opener;
+    if (!opener) return;   // the browser follows target="_blank" itself
+    e.preventDefault();
+    opener.openUrl(e.currentTarget.href);
+  };
+  const outside = (e) => e.target === e.currentTarget && closeAbout();
+
+  window.addEventListener("keydown", (e) => {
+    if (aboutOpen() && e.key === "Escape") {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      closeAbout();
+    }
+  }, true);
+}$
+
+[div = class: "back", data-open: runtime ${ aboutOpen() }$, onclick: runtime ${ outside }$]
+  [div = class: "about", role: "dialog", aria-label: "About Moonwave"]
+    [button = class: "x", type: "button", aria-label: "Close", title: "Close (Esc)", onclick: runtime ${ closeAbout }$]×[end]
+    [span = class: "logo"]${ { raw: logo } }$[end]
+    [h2]Moonwave[end]
+    [p = class: "tag"]A personal music player[end]
+    [dl]
+      [dt]Creator[end][dd]Adam Elmi[end]
+      [dt]Version[end][dd = class: "mono"]${ version }$[end]
+      [dt]State[end][dd][span = class: "state"]Stable[end][end]
+      [dt]Purpose[end]
+      [dd]A music player that lets you download your favorite songs from YouTube.[end]
+      [dt]Built with[end][dd]Tauri, ArcMoon, yt-dlp and ffmpeg[end]
+      [dt]Repository[end][dd][a = href: ${ REPO }$, target: "_blank", rel: "noopener", onclick: runtime ${ openLink }$]${ REPO.replace("https://", "") }$[end][end]
+    [end:dl]
+  [end:div]
+[end:div]
+
+[style]
+  .back {
+    position: fixed;
+    inset: 0;
+    z-index: 22;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: rgb(0 0 0 / 0.35);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s;
+  }
+  .back[data-open] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .about {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: min(400px, 100%);
+    max-height: 100%;
+    padding: 26px 22px 20px;
+    overflow-y: auto;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+  }
+  .x {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    font-size: 16px;
+    line-height: 1;
+    color: var(--muted);
+    background: none;
+    border: 0;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+  .x:hover {
+    color: var(--ink);
+    background: var(--control-hover);
+  }
+  .logo {
+    display: block;
+    width: 84px;
+    height: 84px;
+    filter: drop-shadow(0 8px 20px rgb(0 0 0 / 0.3));
+  }
+  .logo :global(svg) {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  h2 {
+    margin: 14px 0 2px;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .tag {
+    margin: 0 0 16px;
+    font-size: var(--text);
+    color: var(--muted);
+  }
+  dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 9px 16px;
+    width: 100%;
+    margin: 0;
+    padding-top: 14px;
+    font-size: var(--text);
+    border-top: 1px solid var(--line-soft);
+  }
+  dt {
+    font: 500 11px/1.9 var(--mono);
+    color: var(--faint);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  dd {
+    margin: 0;
+    line-height: 1.5;
+    color: var(--ink);
+  }
+  .mono {
+    font-family: var(--mono);
+  }
+  .state {
+    display: inline-block;
+    padding: 0 7px;
+    font: 500 11px/1.7 var(--mono);
+    color: var(--accent);
+    background: var(--selected);
+    border-radius: var(--radius-sm);
+  }
+  a {
+    color: var(--accent);
+    text-decoration: none;
+    overflow-wrap: anywhere;
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+[end]

@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Moonwave: a rose crescent over a night sea, and its reflection on the water is music -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#16131a"/>
+      <stop offset="0.6" stop-color="#0d0b10"/>
+      <stop offset="1" stop-color="#1a1419"/>
+    </linearGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0a090c"/>
+      <stop offset="1" stop-color="#030304"/>
+    </linearGradient>
+    <linearGradient id="rose" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff8fb3"/>
+      <stop offset="0.55" stop-color="#f06595"/>
+      <stop offset="1" stop-color="#c2255c"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.08"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="0.46" cy="0.38" r="0.42">
+      <stop offset="0" stop-color="#f06595" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#f06595" stop-opacity="0"/>
+    </radialGradient>
+    <mask id="crescent">
+      <rect width="512" height="512" fill="#fff"/>
+      <circle cx="294" cy="160" r="84" fill="#000"/>
+    </mask>
+    <clipPath id="tile"><rect width="512" height="512" rx="112"/></clipPath>
+  </defs>
+  <g clip-path="url(#tile)">
+    <rect width="512" height="512" fill="url(#sky)"/>
+    <rect width="512" height="512" fill="url(#halo)"/>
+    <!-- stars -->
+    <circle cx="112" cy="98" r="6" fill="#fff" opacity="0.95"/>
+    <circle cx="402" cy="76" r="4" fill="#fff" opacity="0.8"/>
+    <circle cx="430" cy="212" r="3.5" fill="#fff" opacity="0.6"/>
+    <circle cx="80" cy="236" r="3" fill="#fff" opacity="0.5"/>
+    <path d="M404 128l3.5 9 9 3.5-9 3.5-3.5 9-3.5-9-9-3.5 9-3.5z" fill="#fff" opacity="0.9"/>
+    <!-- the moon -->
+    <circle cx="240" cy="192" r="104" fill="url(#rose)" mask="url(#crescent)"/>
+    <!-- the sea, its edge a gentle wave -->
+    <path d="M0 324 C 60 308, 110 308, 170 322 S 290 338, 350 322 S 460 306, 512 320 V 512 H 0 Z" fill="url(#sea)"/>
+    <path d="M0 324 C 60 308, 110 308, 170 322 S 290 338, 350 322 S 460 306, 512 320" fill="none" stroke="#fff" stroke-width="4" opacity="0.85"/>
+    <!-- the reflection: white equalizer bars hanging from the horizon -->
+    <g fill="url(#shine)">
+      <rect x="170" y="342" width="14" height="42" rx="7"/>
+      <rect x="194" y="342" width="14" height="76" rx="7"/>
+      <rect x="218" y="342" width="14" height="116" rx="7"/>
+      <rect x="242" y="342" width="14" height="144" rx="7"/>
+      <rect x="266" y="342" width="14" height="102" rx="7"/>
+      <rect x="290" y="342" width="14" height="130" rx="7"/>
+      <rect x="314" y="342" width="14" height="68" rx="7"/>
+      <rect x="338" y="342" width="14" height="36" rx="7"/>
+    </g>
+  </g>
+</svg>

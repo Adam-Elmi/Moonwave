@@ -1,0 +1,80 @@
+# ###################
+# StatusBar: a thin bar along the bottom, like Zed's: the library on the left (songs, folders,
+# lists); on the right what's happening (reading a folder, a download's progress) or a problem
+# ###################
+runtime ${
+  import { status, folders, lists, scanStage, scanProgress, problem } from "../lib/state.js";
+  import { items } from "../lib/downloads.js";
+  import { count } from "../lib/format.js";
+
+  const library = () => [count(status()?.tracks ?? 0, "song", "songs"), count(folders().length, "folder", "folders"), count(lists().length, "list", "lists")].join("  ·  ");
+  const doing = () => {
+    if (scanStage() === "running") {
+      const { done, total } = scanProgress();
+      return total ? `Reading music ${done.toLocaleString()} / ${total.toLocaleString()}` : "Reading music…";
+    }
+    const now = items().find((it) => it.status === "running");
+    const waiting = items().filter((it) => it.status === "waiting").length;
+    if (now) return `Downloading “${now.title}” ${now.stage === "downloading" ? `${Math.round(now.percent)}%` : "…"}${waiting ? `  ·  ${waiting} waiting` : ""}`;
+    return "";
+  };
+}$
+
+[footer = class: "statusbar", data-show: runtime ${ status() !== null }$]
+  [span]runtime ${ library() }$[end]
+  [span = class: "right"]
+    [span = class: "doing", data-show: runtime ${ doing() !== "" }$][i][end]runtime ${ doing() }$[end]
+    [span = class: "problem", data-show: runtime ${ problem() !== "" && doing() === "" }$, title: runtime ${ problem() }$]runtime ${ problem() }$[end]
+  [end]
+[end:footer]
+
+[style]
+  .statusbar {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    height: 24px;
+    padding: 0 10px;
+    font: 400 11px var(--mono);
+    color: var(--muted);
+    background: var(--headerbar);
+    border-top: 1px solid var(--line-soft);
+  }
+  .statusbar[data-show] {
+    display: flex;
+  }
+  .right {
+    display: flex;
+    min-width: 0;
+    gap: 12px;
+  }
+  .doing,
+  .problem {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .doing[data-show],
+  .problem[data-show] {
+    display: flex;
+  }
+  .doing i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.3;
+    }
+  }
+  .problem {
+    color: var(--error);
+  }
+[end]

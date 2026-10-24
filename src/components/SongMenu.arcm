@@ -1,0 +1,111 @@
+# ###################
+# SongMenu: right-click a song for Play, Play Next, Add to Queue, Add to List…, Remove Song from
+# List (on one of your lists), Go to Album, Go to Artist, and Delete Song… (asks first; not for
+# the song playing now).
+# A click anywhere else, Esc, or scrolling closes it
+# ###################
+runtime ${
+  import { menu, closeMenu } from "../lib/menu.js";
+  import { playList, playNext, addToQueue, current, dropSong } from "../lib/player.js";
+  import { openAlbum, openArtist, pickList, askDeleteSong, takeFromList } from "../lib/state.js";
+
+  const box = ArcMoon.ref(ArcMoon.defineRef("box"));
+  const isPlaying = () => Boolean(song()) && current()?.id === song().id;
+
+  const song = () => menu()?.song;
+  // keep it inside the window
+  const place = () => {
+    const m = menu();
+    if (!m) return "";
+    const x = Math.min(m.x, window.innerWidth - 220);
+    const y = Math.min(m.y, window.innerHeight - 320);
+    return `left: ${x}px; top: ${y}px`;
+  };
+  const act = (what) => () => {
+    const s = song();
+    const m = menu();
+    closeMenu();
+    if (!s) return;
+    if (what === "play") playList([s]);
+    else if (what === "next") playNext(s);
+    else if (what === "queue") addToQueue(s);
+    else if (what === "list") pickList([s.id]);
+    else if (what === "unlist") takeFromList(m.list, m.position);
+    else if (what === "delete") askDeleteSong(s, current()?.id === s.id, dropSong);
+    else if (what === "album") openAlbum(s.album, s.album_artist || s.artist);
+    else if (what === "artist") openArtist(s.artist);
+  };
+
+  window.addEventListener("mousedown", (e) => menu() && !box.contains(e.target) && closeMenu(), true);
+  window.addEventListener("wheel", () => menu() && closeMenu(), { passive: true });
+  window.addEventListener("blur", () => menu() && closeMenu());
+  window.addEventListener("keydown", (e) => {
+    if (menu() && e.key === "Escape") {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      closeMenu();
+    }
+  }, true);
+}$
+
+[div = class: "menu", role: "menu", arcm-ref: "box", data-open: runtime ${ menu() !== null }$, style: runtime ${ place() }$]
+  [button = type: "button", role: "menuitem", onclick: runtime ${ act("play") }$]Play[end]
+  [button = type: "button", role: "menuitem", onclick: runtime ${ act("next") }$]Play Next[end]
+  [button = type: "button", role: "menuitem", onclick: runtime ${ act("queue") }$]Add to Queue[end]
+  [button = type: "button", role: "menuitem", onclick: runtime ${ act("list") }$]Add to List…[end]
+  [button = class: "unlist", type: "button", role: "menuitem", data-show: runtime ${ Boolean(menu()?.list) }$, onclick: runtime ${ act("unlist") }$]Remove Song from List[end]
+  [hr !]
+  [button = type: "button", role: "menuitem", disabled: runtime ${ !song()?.album }$, onclick: runtime ${ act("album") }$]Go to Album[end]
+  [button = type: "button", role: "menuitem", disabled: runtime ${ !song()?.artist }$, onclick: runtime ${ act("artist") }$]Go to Artist[end]
+  [hr !]
+  [button = class: "danger", type: "button", role: "menuitem", disabled: runtime ${ isPlaying() }$, title: runtime ${ isPlaying() ? "It’s playing now. Play another song first." : "" }$, onclick: runtime ${ act("delete") }$]runtime ${ isPlaying() ? "Delete Song (playing)" : "Delete Song…" }$[end]
+[end:div]
+
+[style]
+  .menu {
+    position: fixed;
+    z-index: 30;
+    display: none;
+    flex-direction: column;
+    width: 200px;
+    padding: 6px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+  .menu[data-open] {
+    display: flex;
+  }
+  button {
+    height: 32px;
+    padding: 0 10px;
+    font: 400 var(--text) var(--font);
+    color: var(--ink);
+    text-align: left;
+    background: none;
+    border: 0;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) {
+    background: var(--hover);
+  }
+  button:disabled {
+    color: var(--muted);
+    opacity: 0.6;
+    cursor: default;
+  }
+  .danger:not(:disabled) {
+    color: var(--error);
+  }
+  .unlist:not([data-show]) {
+    display: none;
+  }
+  hr {
+    width: 100%;
+    margin: 4px 0;
+    border: 0;
+    border-top: 1px solid var(--line);
+  }
+[end]

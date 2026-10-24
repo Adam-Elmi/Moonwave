@@ -1,0 +1,238 @@
+# ###################
+# ShortcutsDialog: every keyboard shortcut, grouped, each key as a chip (Zed-like). A filter at the
+# top narrows the list as you type. Opens from the keyboard button in the title bar, or ? / Ctrl+/;
+# Esc or a click outside closes it. Rows are drawn by runtime code (no live [for-each] yet)
+# ###################
+runtime ${
+  import { effect, signal } from "arcmoon/reactive";
+  import { shortcutsOpen, closeShortcuts, SHORTCUTS } from "../lib/shortcuts.js";
+
+  const list = ArcMoon.ref(ArcMoon.defineRef("list"));
+  const field = ArcMoon.ref(ArcMoon.defineRef("filter"));
+  const filter = signal("");
+
+  // arrow keys as small drawn arrows (the bundled Plex Mono has no arrow characters)
+  const ARROWS = { "←": "M12 8H4M7 5L4 8l3 3", "→": "M4 8h8M9 5l3 3-3 3", "↑": "M8 12V4M5 7l3-3 3 3", "↓": "M8 4v8M5 9l3 3 3-3" };
+  const kbd = (key) => {
+    const k = document.createElement("kbd");
+    if (ARROWS[key]) {
+      k.innerHTML = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="${ARROWS[key]}"/></svg>`;
+      k.setAttribute("aria-label", { "←": "Left", "→": "Right", "↑": "Up", "↓": "Down" }[key]);
+    } else k.textContent = key;
+    return k;
+  };
+  const keys = (alternatives) => {
+    const box = document.createElement("span");
+    box.className = "keys";
+    alternatives.forEach((combo, n) => {
+      if (n) box.append(Object.assign(document.createElement("span"), { className: "or", textContent: "or" }));
+      combo.forEach((key, k) => {
+        if (k) box.append(Object.assign(document.createElement("span"), { className: "plus", textContent: "+" }));
+        box.append(kbd(key));
+      });
+    });
+    return box;
+  };
+
+  effect(() => {
+    const q = filter().trim().toLowerCase();
+    const groups = SHORTCUTS.map(([name, rows]) => [name, rows.filter(([k, what]) => !q || what.toLowerCase().includes(q) || name.toLowerCase().includes(q) || k.flat().join(" ").toLowerCase().includes(q))]).filter(([, rows]) => rows.length);
+    list.replaceChildren(
+      ...groups.flatMap(([name, rows]) => [
+        Object.assign(document.createElement("h3"), { textContent: name }),
+        ...rows.map(([k, what]) => {
+          const row = document.createElement("div");
+          row.className = "row";
+          row.append(Object.assign(document.createElement("span"), { className: "what", textContent: what }), keys(k));
+          return row;
+        }),
+      ])
+    );
+    if (!groups.length) list.append(Object.assign(document.createElement("p"), { className: "none", textContent: `No shortcut matches “${filter().trim()}”` }));
+  });
+
+  // opening: an empty filter, focused; closing lets go of the focus (else Space, ? and the other
+  // keys would still count as typing in the hidden filter)
+  effect(() => {
+    if (!shortcutsOpen()) {
+      if (field.contains(document.activeElement) || field === document.activeElement) field.blur();
+      return;
+    }
+    field.value = "";
+    filter("");
+    setTimeout(() => field.focus(), 30);
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (shortcutsOpen() && e.key === "Escape") {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      closeShortcuts();
+    }
+  }, true);
+  const outside = (e) => e.target === e.currentTarget && closeShortcuts();
+}$
+
+[div = class: "backdrop", data-open: runtime ${ shortcutsOpen() }$, onclick: runtime ${ outside }$]
+  [div = class: "dialog", role: "dialog", aria-label: "Keyboard shortcuts"]
+    [div = class: "head"]
+      [svg = viewBox: "0 0 16 16", aria-hidden: "true"][rect = x: "1.5", y: "4", width: "13", height: "8.5", rx: "1.5" !][path = d: "M4 6.5h.01M6.5 6.5h.01M9 6.5h.01M11.5 6.5h.01M4 9h.01M11.5 9h.01M6 9.8h4" !][end]
+      [h2]Keyboard Shortcuts[end]
+      [button = class: "x", type: "button", aria-label: "Close", title: "Close (Esc)", onclick: runtime ${ closeShortcuts }$]×[end]
+    [end:div]
+    [input = type: "search", arcm-ref: "filter", placeholder: "Filter shortcuts…", aria-label: "Filter shortcuts", autocomplete: "off", oninput: runtime ${ (e) => filter(e.target.value) }$ !]
+    [div = class: "list", arcm-ref: "list"][end]
+  [end:div]
+[end:div]
+
+[style]
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 22;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: rgb(0 0 0 / 0.3);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s;
+  }
+  .backdrop[data-open] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .dialog {
+    display: flex;
+    flex-direction: column;
+    width: min(560px, 100%);
+    max-height: min(620px, 100%);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+  }
+  .head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 12px 10px 16px;
+    color: var(--accent);
+  }
+  .head svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  h2 {
+    flex: 1;
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .x {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    font-size: 16px;
+    line-height: 1;
+    color: var(--muted);
+    background: none;
+    border: 0;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+  .x:hover {
+    color: var(--ink);
+    background: var(--control-hover);
+  }
+  input {
+    margin: 0 16px 6px;
+    height: 28px;
+    padding: 0 10px;
+    font: 400 var(--text) var(--font);
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+    outline: none;
+    user-select: text;
+  }
+  input:focus {
+    border-color: var(--accent);
+  }
+  input::placeholder {
+    color: var(--faint);
+  }
+  .list {
+    padding: 2px 16px 14px;
+    overflow-y: auto;
+  }
+  .list :global(h3) {
+    margin: 14px 0 4px;
+    font: 500 11px var(--mono);
+    color: var(--faint);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .list :global(.row) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 32px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .list :global(.row:last-of-type) {
+    border-bottom: 0;
+  }
+  .list :global(.what) {
+    font-size: var(--text);
+    color: var(--ink);
+  }
+  .list :global(.keys) {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 4px;
+  }
+  .list :global(kbd) {
+    display: inline-grid;
+    place-items: center;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    font: 500 11px var(--mono);
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-bottom-width: 2px;
+    border-radius: var(--radius-sm);
+  }
+  .list :global(kbd svg) {
+    width: 12px;
+    height: 12px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .list :global(.plus),
+  .list :global(.or) {
+    font: 400 11px var(--mono);
+    color: var(--faint);
+  }
+  .list :global(.none) {
+    margin: 24px 0;
+    font-size: var(--text);
+    text-align: center;
+    color: var(--muted);
+  }
+[end]

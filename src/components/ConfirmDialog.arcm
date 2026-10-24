@@ -1,0 +1,97 @@
+# ###################
+# ConfirmDialog: a small alert ("Delete …?") with Cancel and a red action button, Zed-like.
+# Esc or a click outside cancels
+# ###################
+runtime ${
+  import { confirming, answerConfirm } from "../lib/state.js";
+
+  window.addEventListener("keydown", (e) => {
+    if (confirming() && e.key === "Escape") {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      answerConfirm(false);
+    }
+  }, true);
+  const outside = (e) => {
+    if (e.target === e.currentTarget) answerConfirm(false);
+  };
+}$
+
+[div = class: "backdrop", data-open: runtime ${ confirming() !== null }$, onclick: runtime ${ outside }$]
+  [div = class: "alert", role: "alertdialog"]
+    [h2]runtime ${ confirming()?.title ?? "" }$[end]
+    [p]runtime ${ confirming()?.body ?? "" }$[end]
+    [div = class: "buttons"]
+      [button = type: "button", onclick: runtime ${ () => answerConfirm(false) }$]Cancel[end]
+      [button = class: "danger", type: "button", onclick: runtime ${ () => answerConfirm(true) }$]runtime ${ confirming()?.label ?? "OK" }$[end]
+    [end:div]
+  [end:div]
+[end:div]
+
+[style]
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: rgb(0 0 0 / 0.3);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s;
+  }
+  .backdrop[data-open] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .alert {
+    width: min(400px, 100%);
+    padding: 16px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+  }
+  h2 {
+    margin: 0 0 6px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    overflow-wrap: anywhere;
+  }
+  p {
+    margin: 0;
+    font-size: var(--text);
+    line-height: 1.5;
+    color: var(--muted);
+  }
+  .buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 16px;
+  }
+  button {
+    height: 28px;
+    padding: 0 12px;
+    font: 400 var(--text) var(--font);
+    color: var(--ink);
+    background: var(--control);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  button:hover {
+    background: var(--control-hover);
+  }
+  .danger {
+    color: #fff;
+    background: var(--error);
+    border-color: transparent;
+  }
+  .danger:hover {
+    background: var(--error);
+    filter: brightness(1.08);
+  }
+[end]

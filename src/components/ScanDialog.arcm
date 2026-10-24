@@ -1,0 +1,196 @@
+# ###################
+# ScanDialog: while a folder is scanned, its progress; then what changed and what couldn't be read
+# ###################
+runtime ${
+  import { effect } from "arcmoon/reactive";
+  import { scanStage, scanProgress, scanResult, closeScan } from "../lib/state.js";
+  import { count } from "../lib/format.js";
+
+  const percent = () => {
+    const { done, total } = scanProgress();
+    return total ? Math.round((done / total) * 100) : 0;
+  };
+  const counter = () => {
+    const { done, total } = scanProgress();
+    return total ? `${done.toLocaleString()} of ${count(total, "song", "songs")}` : "Looking for songs…";
+  };
+  const summary = () => {
+    const r = scanResult();
+    if (!r) return "";
+    if (r.error) return r.error;
+    if (!r.found) return "No songs in this folder. Moonwave reads MP3, M4A, AAC, Opus, Ogg, FLAC, WAV, AIFF and WMA files.";
+    const parts = [r.added && `${count(r.added, "song", "songs")} added`, r.updated && `${r.updated.toLocaleString()} updated`, r.removed && `${r.removed.toLocaleString()} removed`].filter(Boolean);
+    return parts.length ? parts.join(" · ") : "Everything was already up to date.";
+  };
+
+  // the files that couldn't be read (drawn here: no live [for-each] yet)
+  const problems = ArcMoon.ref(ArcMoon.defineRef("problems"));
+  effect(() => {
+    const list = scanResult()?.problems ?? [];
+    const items = list.slice(0, 6).map(({ file, reason }) => {
+      const li = document.createElement("li");
+      const name = document.createElement("b");
+      const why = document.createElement("span");
+      name.textContent = file.split(/[\\/]/).pop();
+      name.title = file;
+      why.textContent = reason;
+      li.append(name, why);
+      return li;
+    });
+    if (list.length > 6) items.push(Object.assign(document.createElement("li"), { textContent: `and ${(list.length - 6).toLocaleString()} more` }));
+    problems.replaceChildren(...items);
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (scanStage() === "done" && (e.key === "Escape" || e.key === "Enter")) {
+      e.preventDefault();
+      closeScan();
+    }
+  }, true);
+}$
+
+[div = class: "backdrop", data-open: runtime ${ scanStage() !== "idle" }$]
+  [div = class: "dialog", role: "dialog", aria-label: "Adding music"]
+    [h2]runtime ${ scanStage() === "running" ? "Reading your music…" : scanResult()?.error ? "Couldn’t read the folder" : "Done" }$[end]
+
+    [div = class: "running", data-show: runtime ${ scanStage() === "running" }$]
+      [div = class: "bar"][span = style: runtime ${ `width: ${percent()}%` }$][end][end]
+      [p = class: "counter"]runtime ${ counter() }$[end]
+      [p = class: "file"]runtime ${ scanProgress().file }$[end]
+    [end:div]
+
+    [div = class: "done", data-show: runtime ${ scanStage() === "done" }$]
+      [p = class: "summary", data-error: runtime ${ Boolean(scanResult()?.error) }$]runtime ${ summary() }$[end]
+      [p = class: "label", data-show: runtime ${ (scanResult()?.problems?.length ?? 0) > 0 }$]runtime ${ `${count(scanResult()?.problems?.length ?? 0, "file", "files")} couldn’t be read` }$[end]
+      [ul = class: "problems", arcm-ref: "problems"][end]
+      [div = class: "buttons"]
+        [button = class: "pill", type: "button", onclick: runtime ${ closeScan }$]Done[end]
+      [end:div]
+    [end:div]
+  [end:div]
+[end:div]
+
+[style]
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: rgb(0 0 0 / 0.35);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+  }
+  .backdrop[data-open] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .dialog {
+    width: min(440px, 100%);
+    padding: 22px;
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+  }
+  h2 {
+    margin: 0 0 14px;
+    font-size: 15px;
+    font-weight: 700;
+    text-align: center;
+    color: var(--ink);
+  }
+  .running,
+  .done,
+  .label {
+    display: none;
+  }
+  .running[data-show],
+  .done[data-show] {
+    display: block;
+  }
+  .label[data-show] {
+    display: block;
+  }
+  .bar {
+    height: 6px;
+    overflow: hidden;
+    background: var(--control);
+    border-radius: var(--radius-sm);
+  }
+  .bar span {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.2s;
+  }
+  .counter {
+    margin: 10px 0 2px;
+    font-size: 13px;
+    text-align: center;
+    color: var(--ink);
+  }
+  .file {
+    min-height: 16px;
+    margin: 0;
+    overflow: hidden;
+    font-size: 12px;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--muted);
+  }
+  .summary {
+    margin: 0;
+    font-size: var(--text);
+    line-height: 1.5;
+    text-align: center;
+    color: var(--ink);
+  }
+  .summary[data-error] {
+    color: var(--error);
+  }
+  .label {
+    margin: 16px 0 6px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+  .problems {
+    max-height: 160px;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+    font-size: 12px;
+  }
+  .problems :global(li) {
+    display: flex;
+    flex-direction: column;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--line);
+    color: var(--muted);
+  }
+  .problems :global(b) {
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .buttons {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 18px;
+  }
+  .pill {
+    padding: 9px 20px;
+    font: 500 var(--text)/1 var(--font);
+    color: #fff;
+    background: var(--accent);
+    border: 0;
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .pill:hover {
+    background: var(--accent-hover);
+  }
+[end]

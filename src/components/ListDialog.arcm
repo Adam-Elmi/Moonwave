@@ -1,0 +1,255 @@
+# ###################
+# ListDialog: New List (a name; with songs when it came from "Add to List"), Rename List, or
+# Add to List (pick one of your lists, or make a new one with these songs). Esc cancels
+# ###################
+runtime ${
+  import { effect, signal } from "arcmoon/reactive";
+  import { listDialog, closeListDialog, lists, makeList, putInList, nameList } from "../lib/state.js";
+  import { count } from "../lib/format.js";
+
+  const field = ArcMoon.ref(ArcMoon.defineRef("name"));
+  const picks = ArcMoon.ref(ArcMoon.defineRef("picks"));
+  const message = signal("");
+  const busy = signal(false);
+
+  const mode = () => listDialog()?.mode ?? "";
+  const tracks = () => listDialog()?.tracks ?? [];
+
+  // opening: an empty name (or the list's name to rename), focused
+  effect(() => {
+    const d = listDialog();
+    // closed: let go of the focus, so Space and the other keys work again
+    if (!d) return field === document.activeElement && field.blur();
+    message("");
+    field.value = d.mode === "rename" ? d.name : "";
+    if (d.mode !== "pick") setTimeout(() => (field.focus(), field.select()), 50);
+  });
+
+  // your lists to pick from (drawn here: no live [for-each] yet)
+  effect(() => {
+    picks.replaceChildren(
+      ...lists().map((l) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.dataset.id = l.id;
+        const name = document.createElement("b");
+        name.textContent = l.name;
+        const n = document.createElement("small");
+        n.textContent = count(l.tracks, "song", "songs");
+        b.append(name, n);
+        return b;
+      })
+    );
+  });
+
+  const done = (error) => {
+    busy(false);
+    if (error) message(error);
+    else closeListDialog();
+  };
+  const save = async (e) => {
+    e.preventDefault();
+    if (busy()) return;
+    busy(true);
+    const d = listDialog();
+    done(d.mode === "rename" ? await nameList(d.id, field.value) : await makeList(field.value, tracks()));
+  };
+  const pick = async (e) => {
+    const id = e.target.closest("[data-id]")?.dataset.id;
+    if (!id || busy()) return;
+    busy(true);
+    done(await putInList(id, tracks()));
+  };
+  const makeNew = () => listDialog({ mode: "new", tracks: tracks() });
+
+  window.addEventListener("keydown", (e) => {
+    if (listDialog() && e.key === "Escape") {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      closeListDialog();
+    }
+  }, true);
+  const outside = (e) => e.target === e.currentTarget && closeListDialog();
+
+  const title = () => ({ new: "New List", rename: "Rename List", pick: "Add to List" })[mode()] ?? "";
+  const sub = () => (tracks().length ? `${count(tracks().length, "song", "songs")} will go in it.` : "");
+}$
+
+[div = class: "backdrop", data-open: runtime ${ listDialog() !== null }$, onclick: runtime ${ outside }$]
+  [div = class: "dialog", role: "dialog", aria-label: runtime ${ title() }$]
+    [h2]runtime ${ title() }$[end]
+
+    # pick one of your lists
+    [div = class: "pick", data-show: runtime ${ mode() === "pick" }$]
+      [p = class: "sub"]runtime ${ `Add ${count(tracks().length, "song", "songs")} to:` }$[end]
+      [div = class: "picks", arcm-ref: "picks", onclick: runtime ${ pick }$][end]
+      [p = class: "sub", data-show: runtime ${ lists().length === 0 }$]You have no lists yet.[end]
+      [div = class: "buttons"]
+        [button = class: "plain", type: "button", onclick: runtime ${ closeListDialog }$]Cancel[end]
+        [button = class: "pill", type: "button", onclick: runtime ${ makeNew }$]New List…[end]
+      [end:div]
+    [end:div]
+
+    # a name: new or rename
+    [form = data-show: runtime ${ mode() === "new" || mode() === "rename" }$, onsubmit: runtime ${ save }$]
+      [input = type: "text", arcm-ref: "name", placeholder: "e.g. Night Drive", maxlength: "100", autocomplete: "off", spellcheck: "false" !]
+      [p = class: "sub", data-show: runtime ${ mode() === "new" && sub() !== "" }$]runtime ${ sub() }$[end]
+      [p = class: "error", data-show: runtime ${ message() !== "" }$]runtime ${ message() }$[end]
+      [div = class: "buttons"]
+        [button = class: "plain", type: "button", onclick: runtime ${ closeListDialog }$]Cancel[end]
+        [button = class: "pill", type: "submit", disabled: runtime ${ busy() }$]runtime ${ mode() === "rename" ? "Rename" : "Create" }$[end]
+      [end:div]
+    [end:form]
+  [end:div]
+[end:div]
+
+[style]
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: rgb(0 0 0 / 0.35);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+  }
+  .backdrop[data-open] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .dialog {
+    width: min(380px, 100%);
+    padding: 22px;
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+  }
+  h2 {
+    margin: 0 0 14px;
+    font-size: 15px;
+    font-weight: 700;
+    text-align: center;
+    color: var(--ink);
+  }
+  .pick,
+  form,
+  .sub,
+  .error {
+    display: none;
+  }
+  .pick[data-show],
+  form[data-show] {
+    display: block;
+  }
+  .sub[data-show],
+  .pick > .sub:first-child,
+  .error[data-show] {
+    display: block;
+  }
+  .sub {
+    margin: 10px 0 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .pick > .sub:first-child {
+    margin: 0 0 8px;
+  }
+  .error {
+    margin: 10px 0 0;
+    font-size: 13px;
+    color: var(--error);
+  }
+  .picks {
+    display: flex;
+    flex-direction: column;
+    max-height: 260px;
+    overflow-y: auto;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .picks:empty {
+    display: none;
+  }
+  .picks :global(button) {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    font: 400 var(--text) var(--font);
+    color: var(--ink);
+    text-align: left;
+    background: none;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
+  }
+  .picks :global(button:last-child) {
+    border-bottom: 0;
+  }
+  .picks :global(button:hover) {
+    background: var(--hover);
+  }
+  .picks :global(b) {
+    overflow: hidden;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .picks :global(small) {
+    flex-shrink: 0;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  input {
+    width: 100%;
+    height: 30px;
+    padding: 0 10px;
+    font: 400 var(--text) var(--font);
+    color: var(--ink);
+    background: var(--control);
+    border: 0;
+    border-radius: var(--radius);
+    outline: none;
+    user-select: text;
+  }
+  input:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: -1px;
+    background: var(--surface);
+  }
+  .buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 18px;
+  }
+  .plain,
+  .pill {
+    padding: 9px 18px;
+    font: 500 var(--text)/1 var(--font);
+    border: 0;
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .plain {
+    color: var(--ink);
+    background: var(--control);
+  }
+  .plain:hover {
+    background: var(--control-hover);
+  }
+  .pill {
+    color: #fff;
+    background: var(--accent);
+  }
+  .pill:hover {
+    background: var(--accent-hover);
+  }
+  .pill:disabled {
+    opacity: 0.6;
+  }
+[end]

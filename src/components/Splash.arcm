@@ -1,0 +1,153 @@
+# ###################
+# Splash: the logo while Moonwave starts. It's plain markup and CSS, so it shows the moment the
+# window opens, before any script; it stays until the library has loaded (and at least 0.7 s,
+# so it never just flickers), then fades out. It's the logo: the rose crescent over a night sea,
+# whose reflection is a row of white bars that bounce like music (still for reduced motion)
+# ###################
+runtime ${
+  import { effect, signal } from "arcmoon/reactive";
+  import { ready } from "../lib/state.js";
+
+  const shown = performance.now();
+  const gone = signal(false);
+  effect(() => {
+    if (!ready() || gone()) return;
+    setTimeout(() => gone(true), Math.max(0, 700 - (performance.now() - shown)));
+  });
+}$
+
+[div = class: "splash", aria-hidden: "true", data-gone: runtime ${ gone() }$]
+  [svg = class: "mark", viewBox: "0 0 120 120"]
+    [defs]
+      [linearGradient = id: "splash-sky", x1: "0", y1: "0", x2: "0", y2: "1"][stop = offset: "0", stop-color: "#16131a" !][stop = offset: "0.6", stop-color: "#0d0b10" !][stop = offset: "1", stop-color: "#1a1419" !][end]
+      [linearGradient = id: "splash-sea", x1: "0", y1: "0", x2: "0", y2: "1"][stop = offset: "0", stop-color: "#0a090c" !][stop = offset: "1", stop-color: "#030304" !][end]
+      [linearGradient = id: "splash-rose", x1: "0", y1: "0", x2: "1", y2: "1"][stop = offset: "0", stop-color: "#ff8fb3" !][stop = offset: "0.55", stop-color: "#f06595" !][stop = offset: "1", stop-color: "#c2255c" !][end]
+      [radialGradient = id: "splash-halo", cx: "0.46", cy: "0.38", r: "0.42"][stop = offset: "0", stop-color: "#f06595", stop-opacity: "0.22" !][stop = offset: "1", stop-color: "#f06595", stop-opacity: "0" !][end]
+      [mask = id: "splash-cut"][rect = width: "120", height: "120", fill: "#fff" !][circle = cx: "68.9", cy: "37.5", r: "19.7", fill: "#000" !][end]
+      [clipPath = id: "splash-tile"][rect = width: "120", height: "120", rx: "26" !][end]
+    [end]
+    [g = clip-path: "url(#splash-tile)"]
+      [rect = width: "120", height: "120", fill: "url(#splash-sky)" !]
+      [rect = width: "120", height: "120", fill: "url(#splash-halo)" !]
+      [circle = class: "star", cx: "26.3", cy: "23", r: "1.4" !][circle = class: "star two", cx: "94.2", cy: "17.8", r: "1" !][circle = class: "star", cx: "100.8", cy: "49.7", r: ".8" !][circle = class: "star two", cx: "18.8", cy: "55.3", r: ".7" !]
+      [circle = cx: "56.3", cy: "45", r: "24.4", fill: "url(#splash-rose)", mask: "url(#splash-cut)" !]
+      [path = d: "M0 76C14 72.2 25.8 72.2 39.8 75.5S68 79.2 82 75.5 107.8 71.7 120 75V120H0Z", fill: "url(#splash-sea)" !]
+      [path = class: "edge", d: "M0 76C14 72.2 25.8 72.2 39.8 75.5S68 79.2 82 75.5 107.8 71.7 120 75" !]
+      # the reflection: white bars that bounce like music
+      [g = class: "eq"]
+        [rect = x: "39.8", y: "80.2", width: "3.3", height: "33", rx: "1.6" !][rect = x: "45.5", y: "80.2", width: "3.3", height: "33", rx: "1.6" !][rect = x: "51.1", y: "80.2", width: "3.3", height: "33", rx: "1.6" !][rect = x: "56.7", y: "80.2", width: "3.3", height: "33", rx: "1.6" !][rect = x: "62.3", y: "80.2", width: "3.3", height: "33", rx: "1.6" !][rect = x: "68", y: "80.2", width: "3.3", height: "33", rx: "1.6" !][rect = x: "73.6", y: "80.2", width: "3.3", height: "33", rx: "1.6" !][rect = x: "79.2", y: "80.2", width: "3.3", height: "33", rx: "1.6" !]
+      [end]
+    [end]
+  [end]
+  [b]Moonwave[end]
+  [span = class: "dots"][i][end][i][end][i][end][end]
+[end:div]
+
+[style]
+  .splash {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    background: var(--bg);
+    transition: opacity 0.25s ease-out, visibility 0.25s;
+  }
+  .splash[data-gone] {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .mark {
+    width: 104px;
+    height: 104px;
+    filter: drop-shadow(0 10px 24px rgb(0 0 0 / 0.3));
+  }
+  .star {
+    fill: #fff;
+    animation: twinkle 2.2s ease-in-out infinite;
+  }
+  .star.two {
+    animation-delay: 0.9s;
+  }
+  .edge {
+    fill: none;
+    stroke: #fff;
+    stroke-width: 1;
+    opacity: 0.85;
+  }
+  /* each bar stretches from the horizon down, like a meter, at its own pace */
+  .eq rect {
+    fill: #fff;
+    transform-box: fill-box;
+    transform-origin: top;
+    animation: level 1s ease-in-out infinite;
+  }
+  .eq rect:nth-child(1) { animation-delay: -0.2s; animation-duration: 0.9s; }
+  .eq rect:nth-child(2) { animation-delay: -0.5s; animation-duration: 1.1s; }
+  .eq rect:nth-child(3) { animation-delay: -0.1s; animation-duration: 0.8s; }
+  .eq rect:nth-child(4) { animation-delay: -0.7s; animation-duration: 1.2s; }
+  .eq rect:nth-child(5) { animation-delay: -0.3s; animation-duration: 0.95s; }
+  .eq rect:nth-child(6) { animation-delay: -0.6s; animation-duration: 1.05s; }
+  .eq rect:nth-child(7) { animation-delay: -0.4s; animation-duration: 0.85s; }
+  .eq rect:nth-child(8) { animation-delay: -0.8s; animation-duration: 1.15s; }
+  b {
+    font: 600 15px var(--font);
+    letter-spacing: 0.02em;
+    color: var(--ink);
+  }
+  .dots {
+    display: flex;
+    gap: 5px;
+  }
+  .dots i {
+    width: 5px;
+    height: 5px;
+    background: var(--faint);
+    border-radius: 50%;
+    animation: dot 1.2s ease-in-out infinite;
+  }
+  .dots i:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+  .dots i:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+  @keyframes level {
+    0%,
+    100% {
+      transform: scaleY(0.25);
+      opacity: 0.35;
+    }
+    50% {
+      transform: scaleY(1);
+      opacity: 0.9;
+    }
+  }
+  @keyframes twinkle {
+    50% {
+      opacity: 0.3;
+    }
+  }
+  @keyframes dot {
+    0%,
+    100% {
+      opacity: 0.3;
+      transform: translateY(0);
+    }
+    40% {
+      opacity: 1;
+      transform: translateY(-3px);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .star,
+    .eq rect,
+    .dots i {
+      animation: none;
+    }
+  }
+[end]

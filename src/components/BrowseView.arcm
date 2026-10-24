@@ -1,0 +1,926 @@
+# ###################
+# BrowseView: tabs like Zed's open files (Songs, Albums, Artists, and the page you opened, with ×),
+# the toolbar (search, count, sort), then Songs (a table that loads more as you scroll), Albums
+# (a cover grid) or Artists (round pictures). Clicking an album or artist opens its page as a
+# tab: a header with the cover, then the songs, and an artist's albums.
+# Lists open as pages too: yours (Play, Shuffle, Rename, Delete; drag a song or Alt+↑ / ↓ to
+# move it, × to take it out) and Recently Added / Most Played (100 songs each).
+# A click (or Enter) plays a song (the whole view becomes the queue) and opens Now Playing;
+# right-click opens the song menu; the playing song is marked. Ctrl+F jumps to the search; Esc leaves a page
+# ###################
+runtime ${
+  import { effect } from "arcmoon/reactive";
+  import { view, detail, search, sort, songs, songTotal, loading, albums, artists, setSearch, setSort, loadMore, openAlbum, openArtist, closeDetail, songsInView, setView, fetching, lists, pickList, askRename, askDeleteList, takeFromList, moveSong, folders, rescan, scanStage } from "../lib/state.js";
+  import { playList, playShuffled, fillQueue, current, playing, openNow } from "../lib/player.js";
+  import { openMenu } from "../lib/menu.js";
+  import { songRow, albumCard, artistCard, cover } from "../lib/draw.js";
+  import { count, duration } from "../lib/format.js";
+
+  const songList = ArcMoon.ref(ArcMoon.defineRef("songList"));
+  const albumGrid = ArcMoon.ref(ArcMoon.defineRef("albumGrid"));
+  const artistGrid = ArcMoon.ref(ArcMoon.defineRef("artistGrid"));
+  const art = ArcMoon.ref(ArcMoon.defineRef("art"));
+  const end = ArcMoon.ref(ArcMoon.defineRef("end"));
+  const field = ArcMoon.ref(ArcMoon.defineRef("search"));
+  const scroller = ArcMoon.ref(ArcMoon.defineRef("scroller"));
+
+  // what shows: songs, albums or artists, or a page
+  const showing = () => (detail() ? detail().kind : view());
+  const showSongs = () => ["songs", "album", "artist", "list", "smart", "folder"].includes(showing());
+  const showAlbums = () => showing() === "albums" || showing() === "artist";
+
+  // the playing song: marked in the list
+  const mark = () => {
+    const id = current()?.id;
+    for (const row of songList.children) {
+      row.toggleAttribute("data-playing", row.dataset.id === id);
+      row.toggleAttribute("data-paused", row.dataset.id === id && !playing());
+    }
+  };
+  // your list: rows can be dragged, and have × to take them out
+  const isList = () => detail()?.kind === "list";
+  let refocus = -1;   // after Alt+↑ / ↓, the moved song keeps the focus
+  effect(() => {
+    const numbered = detail()?.kind === "album" || isList();
+    const mine = isList();
+    songList.replaceChildren(
+      ...songs().map((s, i) => {
+        const row = songRow(s, { numbered, index: i });
+        if (mine) {
+          row.draggable = true;
+          const x = document.createElement("button");
+          x.type = "button";
+          x.className = "remove";
+          x.title = "Take out of this list";
+          x.textContent = "×";
+          row.append(x);
+        }
+        return row;
+      })
+    );
+    if (refocus >= 0) {
+      songList.children[refocus]?.focus();
+      refocus = -1;
+    }
+    mark();
+  });
+
+  // ###################
+  // Moving songs in your list: drag and drop, or Alt+↑ / ↓ on a focused row
+  // ###################
+  const rowIndex = (row) => [...songList.children].indexOf(row);
+  let dragFrom = -1;
+  const dragStart = (e) => {
+    const row = e.target.closest(".song");
+    if (!isList() || !row) return;
+    dragFrom = rowIndex(row);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", String(dragFrom));
+    row.setAttribute("data-dragging", "");
+  };
+  const clearDrop = () => songList.querySelectorAll("[data-drop]").forEach((r) => r.removeAttribute("data-drop"));
+  const dragOver = (e) => {
+    const row = e.target.closest(".song");
+    if (dragFrom < 0 || !row) return;
+    e.preventDefault();
+    clearDrop();
+    const box = row.getBoundingClientRect();
+    row.setAttribute("data-drop", e.clientY < box.top + box.height / 2 ? "before" : "after");
+  };
+  const drop = (e) => {
+    const row = e.target.closest(".song");
+    if (dragFrom < 0 || !row) return;
+    e.preventDefault();
+    let to = rowIndex(row) + (row.getAttribute("data-drop") === "after" ? 1 : 0);
+    if (to > dragFrom) to -= 1;
+    const from = dragFrom;
+    dragEnd();
+    if (to !== from) moveSong(detail().id, from, to);
+  };
+  const dragEnd = () => {
+    dragFrom = -1;
+    clearDrop();
+    songList.querySelectorAll("[data-dragging]").forEach((r) => r.removeAttribute("data-dragging"));
+  };
+  const listClick = (e) => {
+    const x = e.target.closest(".remove");
+    if (x && isList()) return takeFromList(detail().id, rowIndex(x.closest(".song")));
+    playRow(e.target.closest(".song"));
+  };
+
+  effect(() => {
+    current();
+    playing();
+    mark();
+  });
+
+  // play a song at once and open Now Playing; the whole view (every song, not only those
+  // loaded) becomes the queue: right away on a page, a moment later for a big view
+  const playRow = (row) => {
+    const id = row?.dataset.id;
+    const loaded = songs();
+    const at = loaded.findIndex((s) => s.id === id);
+    if (at < 0) return;
+    const whole = detail() && detail().kind !== "folder";
+    playList(whole ? loaded : [loaded[at]], whole ? at : 0);
+    openNow();
+    if (!whole)
+      songsInView().then((all) => {
+        const i = all.findIndex((s) => s.id === id);
+        if (i >= 0) fillQueue(all, i);
+      }, () => {});
+  };
+  const songAt = (row) => songs().find((s) => s.id === row?.dataset.id);
+
+  const context = (e) => {
+    const song = songAt(e.target.closest(".song"));
+    if (!song) return;
+    e.preventDefault();
+    openMenu(song, e.clientX, e.clientY, isList() ? { id: detail().id, position: rowIndex(e.target.closest(".song")) } : null);
+  };
+  effect(() => albumGrid.replaceChildren(...albums().map((a) => albumCard(a, { showYear: detail()?.kind === "artist" }))));
+  effect(() => artistGrid.replaceChildren(...artists().map(artistCard)));
+
+  // a page's big picture: the album's cover, one of the artist's, four covers for a list
+  const thisList = () => (isList() ? lists().find((l) => l.id === detail().id) : null);
+  const thisFolder = () => (detail()?.kind === "folder" ? folders().find((f) => f.id === detail().id) : null);
+  effect(() => {
+    const d = detail();
+    if (!d) return art.replaceChildren();
+    if (d.kind === "folder") return art.replaceChildren(cover(songs().find((s) => s.cover)?.cover, thisFolder()?.name ?? "", "big"));
+    if (d.kind === "list" || d.kind === "smart") {
+      const covers = d.kind === "list" ? (thisList()?.covers ?? []) : [...new Set(songs().map((s) => s.cover).filter(Boolean))].slice(0, 4);
+      if (covers.length >= 4) {
+        const grid = document.createElement("div");
+        grid.className = "big collage";
+        grid.append(...covers.slice(0, 4).map((c) => cover(c, "", "tile")));
+        return art.replaceChildren(grid);
+      }
+      return art.replaceChildren(cover(covers[0], pageTitle(), "big"));
+    }
+    const picture = d.kind === "album" ? songs().find((s) => s.cover)?.cover : albums().find((a) => a.cover)?.cover;
+    art.replaceChildren(cover(picture, d.kind === "album" ? d.album : d.artist, d.kind === "artist" ? "big round" : "big"));
+  });
+
+  // the page's buttons (a folder's page plays all its songs, not only those loaded)
+  const pageSongs = async () => (detail()?.kind === "folder" ? songsInView() : songs());
+  const playAll = async () => {
+    const all = await pageSongs();
+    if (all.length) playList(all, 0);
+  };
+  const shuffleAll = async () => playShuffled(await pageSongs());
+  const addAll = async () => {
+    const all = await pageSongs();
+    if (all.length) pickList(all.map((s) => s.id));
+  };
+
+  // a new view or page starts at the top
+  effect(() => {
+    showing();
+    detail();
+    scroller.scrollTop = 0;
+  });
+
+  const pick = (e) => {
+    const card = e.target.closest("[data-album], [data-artist]");
+    if (!card) return;
+    if (card.dataset.album !== undefined) openAlbum(card.dataset.album, card.dataset.artist);
+    else openArtist(card.dataset.artist);
+  };
+  const key = (e) => {
+    const moving = e.target.closest(".song");
+    if (isList() && moving && e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      e.preventDefault();
+      const from = rowIndex(moving);
+      const to = from + (e.key === "ArrowUp" ? -1 : 1);
+      if (to >= 0 && to < songs().length) {
+        refocus = to;
+        moveSong(detail().id, from, to);
+      }
+      return;
+    }
+    if (e.key !== "Enter") return;
+    const row = e.target.closest(".song");
+    if (row) playRow(row);
+    else pick(e);
+  };
+
+  new IntersectionObserver((entries) => entries[0].isIntersecting && showSongs() && loadMore(), { rootMargin: "600px" }).observe(end);
+
+  window.addEventListener("keydown", (e) => {
+    if (e.ctrlKey && e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      if (detail()) closeDetail();
+      field.focus();
+      field.select();
+    } else if (e.key === "Escape" && detail() && !document.querySelector(".backdrop[data-open]")) {
+      e.preventDefault();
+      closeDetail();
+    }
+  });
+
+  // words
+  const shown = () => {
+    if (showing() === "albums") return count(albums().length, "album", "albums");
+    if (showing() === "artists") return count(artists().length, "artist", "artists");
+    return count(songTotal(), "song", "songs");
+  };
+  const SMART = { recent: "Recently Added", played: "Most Played" };
+  const pageTitle = () => {
+    const d = detail();
+    if (d?.kind === "album") return d.album;
+    if (d?.kind === "list") return thisList()?.name ?? "";
+    if (d?.kind === "smart") return SMART[d.which];
+    if (d?.kind === "folder") return thisFolder()?.name ?? "";
+    return d?.artist ?? "";
+  };
+  const pageKind = () => ({ album: "Album", artist: "Artist", list: "List", smart: "Made for you", folder: "Folder" })[detail()?.kind] ?? "";
+  const pageInfo = () => {
+    const d = detail();
+    if (!d) return "";
+    const total = songs().reduce((sum, s) => sum + (s.duration_ms ?? 0), 0);
+    if (d.kind === "album") return [d.artist, count(songTotal(), "song", "songs"), duration(total)].filter(Boolean).join(" · ");
+    if (d.kind === "list") return songs().length ? [count(songTotal(), "song", "songs"), duration(total)].join(" · ") : "Empty";
+    if (d.kind === "folder") {
+      const f = thisFolder();
+      if (!f) return "";
+      return f.exists ? `${count(songTotal(), "song", "songs")} · ${f.path.replace(/^\/home\/[^/]+/, "~")}` : `${f.path} can’t be found`;
+    }
+    if (d.kind === "smart") return d.which === "recent" ? "The 100 newest songs in your library" : songs().length ? "The songs you play most" : "Songs show up here once you’ve played them";
+    return [count(songTotal(), "song", "songs"), albums().length ? count(albums().length, "album", "albums") : ""].filter(Boolean).join(" · ");
+  };
+  const emptyText = () => {
+    if (loading()) return "";
+    if (isList()) return "This list is empty. Right-click songs and choose Add to List.";
+    if (detail()?.kind === "folder") return "No songs in this folder yet. Download one here, or add files and Rescan.";
+    if (detail()?.kind === "smart") return detail().which === "played" ? "Nothing played yet." : "No songs yet.";
+    if (search().trim() && !detail()) return `Nothing matches “${search().trim()}”`;
+    if (showing() === "albums") return "No albums yet. Songs with an album name show up here.";
+    if (showing() === "artists") return "No artists yet. Songs with an artist name show up here.";
+    return "No songs here";
+  };
+  const isEmpty = () => (showing() === "albums" ? albums().length === 0 : showing() === "artists" ? artists().length === 0 : songs().length === 0);
+}$
+
+[section = class: "browse"]
+  # tabs: the three views, then the open page (× or Esc closes it)
+  [div = class: "tabs", role: "tablist"]
+    [button = class: "tab", type: "button", role: "tab", data-view: "songs", data-on: runtime ${ !detail() && view() === "songs" }$, onclick: runtime ${ () => setView("songs") }$]
+      [svg = viewBox: "0 0 16 16", aria-hidden: "true"][path = d: "M6 12V4l7-1.5v8M6 12a2 2 0 1 1-2-2 2 2 0 0 1 2 2zM13 10.5a2 2 0 1 1-2-2 2 2 0 0 1 2 2z" !][end]
+      Songs
+    [end]
+    [button = class: "tab", type: "button", role: "tab", data-view: "albums", data-on: runtime ${ !detail() && view() === "albums" }$, onclick: runtime ${ () => setView("albums") }$]
+      [svg = viewBox: "0 0 16 16", aria-hidden: "true"][rect = x: "2.5", y: "2.5", width: "11", height: "11", rx: "1.5" !][circle = cx: "8", cy: "8", r: "2.5" !][end]
+      Albums
+    [end]
+    [button = class: "tab", type: "button", role: "tab", data-view: "artists", data-on: runtime ${ !detail() && view() === "artists" }$, onclick: runtime ${ () => setView("artists") }$]
+      [svg = viewBox: "0 0 16 16", aria-hidden: "true"][circle = cx: "8", cy: "5.5", r: "2.5" !][path = d: "M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4" !][end]
+      Artists
+    [end]
+    [div = class: "tab page", role: "tab", data-on: "", data-show: runtime ${ detail() !== null }$]
+      [small]runtime ${ pageKind() }$[end]
+      [span]runtime ${ pageTitle() }$[end]
+      [button = class: "close", type: "button", title: "Close (Esc)", aria-label: "Close", onclick: runtime ${ closeDetail }$]×[end]
+    [end:div]
+    [div = class: "fill"][end]
+  [end:div]
+  # loading: a thin rose line sliding under the tabs (only after a moment, so quick loads don't flicker)
+  [div = class: "loading", role: "progressbar", aria-label: "Loading", data-on: runtime ${ loading() || fetching() > 0 }$][span][end][end]
+
+  # the toolbar (the three views only)
+  [div = class: "toolbar", data-hide: runtime ${ detail() !== null }$]
+    [label = class: "search"]
+      [svg = viewBox: "0 0 24 24", aria-hidden: "true"][path = d: "M10.5 18a7.5 7.5 0 1 0 0-15 7.5 7.5 0 0 0 0 15zM16 16l5 5" !][end]
+      [input = type: "search", placeholder: "Search songs, artists and albums", arcm-ref: "search", aria-label: "Search", oninput: runtime ${ (e) => setSearch(e.target.value) }$ !]
+    [end:label]
+    [span = class: "shown"]runtime ${ shown() }$[end]
+    [select = class: "sort", aria-label: "Sort", data-hide: runtime ${ showing() !== "songs" }$, onchange: runtime ${ (e) => setSort(e.target.value) }$]
+      [option = value: "title"]Title[end]
+      [option = value: "artist"]Artist[end]
+      [option = value: "album"]Album[end]
+      [option = value: "recent"]Recently Added[end]
+      [option = value: "length"]Longest[end]
+    [end:select]
+  [end:div]
+
+  [div = class: "scroll", arcm-ref: "scroller", onclick: runtime ${ pick }$, onkeydown: runtime ${ key }$]
+    # an album's or artist's page
+    [div = class: "page-head", data-show: runtime ${ detail() !== null }$]
+      [div = class: "page-art", arcm-ref: "art"][end]
+      [div]
+        [small]runtime ${ pageKind() }$[end]
+        [h2]runtime ${ pageTitle() }$[end]
+        [p]runtime ${ pageInfo() }$[end]
+        [div = class: "actions"]
+          [button = class: "pill", type: "button", disabled: runtime ${ songs().length === 0 }$, onclick: runtime ${ playAll }$]
+            [svg = viewBox: "0 0 16 16", aria-hidden: "true"][path = class: "solid", d: "M5 3.2v9.6L13 8z" !][end]
+            Play
+          [end]
+          [button = class: "soft", type: "button", disabled: runtime ${ songs().length === 0 }$, onclick: runtime ${ shuffleAll }$]
+            [svg = viewBox: "0 0 16 16", aria-hidden: "true"][path = d: "M2 4.5h2.5c3 0 4 7 7 7H14M12 9.5l2 2-2 2M2 11.5h2.5c1.1 0 1.9-.9 2.5-2M9 6.5c.6-1.1 1.4-2 2.5-2H14M12 2.5l2 2-2 2" !][end]
+            Shuffle
+          [end]
+          [button = class: "soft", type: "button", data-hide: runtime ${ isList() || detail()?.kind === "smart" }$, disabled: runtime ${ songs().length === 0 }$, onclick: runtime ${ addAll }$]Add to List…[end]
+          [button = class: "soft", type: "button", data-hide: runtime ${ detail()?.kind !== "folder" }$, disabled: runtime ${ scanStage() === "running" || !thisFolder()?.exists }$, onclick: runtime ${ () => rescan(detail().id) }$]Rescan[end]
+          [button = class: "soft", type: "button", data-hide: runtime ${ !isList() }$, onclick: runtime ${ () => askRename(detail().id) }$]Rename…[end]
+          [button = class: "soft danger", type: "button", data-hide: runtime ${ !isList() }$, onclick: runtime ${ () => askDeleteList(detail().id) }$]Delete…[end]
+        [end:div]
+      [end]
+    [end:div]
+
+    [h3 = data-show: runtime ${ detail()?.kind === "artist" && albums().length > 0 }$]Albums[end]
+    [ul = class: "grid", arcm-ref: "albumGrid", data-hide: runtime ${ !showAlbums() || albums().length === 0 }$][end]
+
+    [ul = class: "grid", arcm-ref: "artistGrid", data-hide: runtime ${ showing() !== "artists" || artists().length === 0 }$][end]
+
+    [h3 = data-show: runtime ${ detail()?.kind === "artist" }$]Songs[end]
+    [ul = class: "list", arcm-ref: "songList", data-hide: runtime ${ !showSongs() || songs().length === 0 }$, oncontextmenu: runtime ${ context }$, ondragstart: runtime ${ dragStart }$, ondragover: runtime ${ dragOver }$, ondrop: runtime ${ drop }$, ondragend: runtime ${ dragEnd }$, onclick: runtime ${ listClick }$][end]
+
+    [p = class: "empty", data-show: runtime ${ isEmpty() && emptyText() !== "" && (detail() === null || isList() || detail().kind === "smart" || detail().kind === "folder") }$]runtime ${ emptyText() }$[end]
+    [div = class: "end", arcm-ref: "end"][end]
+  [end:div]
+[end:section]
+
+[style]
+  .browse {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    background: var(--bg);
+  }
+  [data-hide] {
+    display: none !important;
+  }
+  svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* ###################
+     Tabs, like Zed's: a bar of flat tabs; the open one has the page's color and no bottom line
+     ################### */
+  .tabs {
+    display: flex;
+    align-items: stretch;
+    height: 34px;
+    background: var(--headerbar);
+  }
+  .tab {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    padding: 0 14px;
+    font: 400 var(--text) var(--font);
+    color: var(--muted);
+    background: none;
+    border: 0;
+    border-right: 1px solid var(--line-soft);
+    border-bottom: 1px solid var(--line-soft);
+    cursor: pointer;
+  }
+  .tab:hover {
+    color: var(--ink);
+    background: var(--hover);
+  }
+  .tab[data-on] {
+    color: var(--ink);
+    background: var(--bg);
+    border-bottom-color: transparent;
+  }
+  .tab[data-on] svg {
+    color: var(--accent);
+  }
+  .tab.page {
+    display: none;
+    max-width: 320px;
+    cursor: default;
+  }
+  .tab.page[data-show] {
+    display: flex;
+  }
+  .tab.page small {
+    font-size: var(--small);
+    color: var(--accent);
+  }
+  .tab.page span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .close {
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    margin-left: 2px;
+    padding: 0;
+    font-size: 14px;
+    line-height: 1;
+    color: var(--muted);
+    background: none;
+    border: 0;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+  .close:hover {
+    color: var(--ink);
+    background: var(--control-hover);
+  }
+  .tabs .fill {
+    flex: 1;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  /* the loading line */
+  .loading {
+    position: relative;
+    height: 2px;
+    margin-top: -2px;
+    overflow: hidden;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .loading[data-on] {
+    opacity: 1;
+    transition-delay: 0.15s;
+  }
+  .loading span {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 30%;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: slide 1.1s ease-in-out infinite;
+  }
+  .loading:not([data-on]) span {
+    animation-play-state: paused;
+  }
+  @keyframes slide {
+    from {
+      left: -30%;
+    }
+    to {
+      left: 100%;
+    }
+  }
+
+  /* ###################
+     Toolbar: search, count, sort
+     ################### */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px 6px;
+  }
+  .search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    max-width: 420px;
+    height: 28px;
+    padding: 0 8px;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+  }
+  .search:focus-within {
+    border-color: var(--accent);
+  }
+  input {
+    flex: 1;
+    min-width: 0;
+    font: 400 var(--text) var(--font);
+    color: var(--ink);
+    background: none;
+    border: 0;
+    outline: none;
+    user-select: text;
+  }
+  input::placeholder {
+    color: var(--faint);
+  }
+  .shown {
+    margin-left: auto;
+    font: 400 var(--small) var(--mono);
+    white-space: nowrap;
+    color: var(--muted);
+  }
+  .sort {
+    height: 28px;
+    padding: 0 8px;
+    font: 400 var(--text) var(--font);
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+
+  .scroll {
+    flex: 1;
+    min-height: 0;
+    padding: 4px 16px 20px;
+    overflow-y: auto;
+  }
+
+  /* ###################
+     An album's, artist's, list's or folder's page: a flat header
+     ################### */
+  .page-head {
+    display: none;
+    align-items: flex-end;
+    gap: 18px;
+    margin: 12px 0 18px;
+  }
+  .page-head[data-show] {
+    display: flex;
+  }
+  .page-head small {
+    font: 500 var(--small) var(--mono);
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .page-head h2 {
+    margin: 2px 0 4px;
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--ink);
+    overflow-wrap: anywhere;
+  }
+  .page-head p {
+    margin: 0;
+    font-size: var(--text);
+    color: var(--muted);
+  }
+  /* the page's buttons: flat, like Zed's */
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+  }
+  .actions button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 12px;
+    font: 400 var(--text) var(--font);
+    color: var(--ink);
+    background: var(--control);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .actions button:hover:not(:disabled) {
+    background: var(--control-hover);
+  }
+  .actions button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .actions .pill {
+    color: #fff;
+    background: var(--accent);
+    border-color: transparent;
+  }
+  .actions .pill:hover:not(:disabled) {
+    background: var(--accent-hover);
+  }
+  .actions .danger {
+    color: var(--error);
+  }
+  .actions .solid {
+    fill: currentColor;
+    stroke: none;
+  }
+  h3 {
+    display: none;
+    margin: 18px 0 8px;
+    font: 500 var(--small) var(--mono);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  h3[data-show] {
+    display: block;
+  }
+
+  /* ###################
+     Covers and placeholders (drawn by draw.js)
+     ################### */
+  .scroll :global(.art),
+  .scroll :global(.big) {
+    position: relative;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    font-weight: 600;
+    color: rgb(255 255 255 / 0.92);
+    background: linear-gradient(150deg, hsl(var(--hue) 40% 50%), hsl(var(--hue) 45% 34%));
+    border-radius: var(--radius-sm);
+  }
+  .scroll :global(.has) {
+    background: var(--control);
+  }
+  .scroll :global(.art img),
+  .scroll :global(.big img) {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .scroll :global(.round) {
+    border-radius: 50%;
+  }
+  .scroll :global(.big) {
+    width: 140px;
+    height: 140px;
+    font-size: 40px;
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-lg);
+  }
+  .scroll :global(.big.round) {
+    border-radius: 50%;
+  }
+  .scroll :global(.collage) {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    background: var(--control);
+  }
+  .scroll :global(.tile) {
+    position: relative;
+    overflow: hidden;
+  }
+  .scroll :global(.tile img) {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  /* ###################
+     Songs: a dense table (cover or number | title | artist | album | time), no card around it
+     ################### */
+  .list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .list :global(.song) {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 2.2fr) minmax(0, 1.3fr) minmax(0, 1.3fr) 48px 24px;
+    align-items: center;
+    gap: 12px;
+    height: var(--row);
+    padding: 0 8px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+  .list :global(.song:hover) {
+    background: var(--hover);
+  }
+  .list :global(.song:focus-visible) {
+    outline: 1px solid var(--accent);
+    outline-offset: -1px;
+  }
+  .list :global(.art) {
+    width: 22px;
+    height: 22px;
+    font-size: 9px;
+  }
+  .list :global(.number) {
+    font: 400 var(--small) var(--mono);
+    text-align: right;
+    color: var(--faint);
+  }
+  .list :global(.text) {
+    min-width: 0;
+  }
+  .list :global(.text small) {
+    display: none;
+  }
+  .list :global(b),
+  .list :global(.artist),
+  .list :global(.album) {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .list :global(b) {
+    font-size: var(--text);
+    font-weight: 400;
+    color: var(--ink);
+  }
+  .list :global(.artist),
+  .list :global(.album) {
+    font-size: var(--text);
+    color: var(--muted);
+  }
+  .list :global(.length) {
+    font: 400 var(--small) var(--mono);
+    text-align: right;
+    color: var(--muted);
+  }
+  /* the playing song: rose title, bars in place of its number */
+  .list :global(.song[data-playing] b) {
+    color: var(--accent);
+    font-weight: 500;
+  }
+  /* three little bars that bounce while it plays (in place of its number, or over its cover);
+     they stop when it's paused */
+  .list :global(.song[data-playing] .number) {
+    font-size: 0;
+  }
+  .list :global(.song[data-playing] .number::after),
+  .list :global(.song[data-playing] .art::after) {
+    content: "";
+    display: inline-block;
+    width: 11px;
+    height: 11px;
+    background: linear-gradient(var(--accent), var(--accent)) 0 100% / 3px 60% no-repeat, linear-gradient(var(--accent), var(--accent)) 4px 100% / 3px 100% no-repeat, linear-gradient(var(--accent), var(--accent)) 8px 100% / 3px 40% no-repeat;
+    animation: bounce 0.9s ease-in-out infinite;
+  }
+  .list :global(.song[data-playing] .art::after) {
+    position: absolute;
+    background-color: transparent;
+  }
+  .list :global(.song[data-playing] .art) {
+    background: var(--panel);
+  }
+  .list :global(.song[data-playing] .art img),
+  .list :global(.song[data-playing] .art span) {
+    opacity: 0.25;
+  }
+  .list :global(.song[data-paused] .number::after),
+  .list :global(.song[data-paused] .art::after) {
+    animation-play-state: paused;
+  }
+  @keyframes bounce {
+    0%,
+    100% {
+      background-size: 3px 60%, 3px 100%, 3px 40%;
+    }
+    25% {
+      background-size: 3px 30%, 3px 70%, 3px 90%;
+    }
+    50% {
+      background-size: 3px 100%, 3px 45%, 3px 60%;
+    }
+    75% {
+      background-size: 3px 45%, 3px 85%, 3px 30%;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .list :global(.song[data-playing] .number::after),
+    .list :global(.song[data-playing] .art::after) {
+      animation: none;
+    }
+  }
+  /* your list: drag to move (a line shows where it lands), × to take out */
+  .list :global(.song[draggable="true"]) {
+    cursor: grab;
+  }
+  .list :global(.song[data-dragging]) {
+    opacity: 0.4;
+  }
+  .list :global(.song[data-drop="before"]) {
+    box-shadow: inset 0 2px 0 var(--accent);
+  }
+  .list :global(.song[data-drop="after"]) {
+    box-shadow: inset 0 -2px 0 var(--accent);
+  }
+  .list :global(.remove) {
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    font-size: 15px;
+    line-height: 1;
+    color: var(--muted);
+    background: none;
+    border: 0;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    opacity: 0;
+  }
+  .list :global(.song:hover .remove),
+  .list :global(.song:focus-within .remove) {
+    opacity: 1;
+  }
+  .list :global(.remove:hover) {
+    color: var(--ink);
+    background: var(--control-hover);
+  }
+  /* narrow windows: title and time only (the line under the title shows artist · album) */
+  @media (max-width: 860px) {
+    .list :global(.song) {
+      grid-template-columns: 24px minmax(0, 1fr) 48px 24px;
+      height: 40px;
+    }
+    .list :global(.artist),
+    .list :global(.album) {
+      display: none;
+    }
+    .list :global(.text small) {
+      display: block;
+      overflow: hidden;
+      font-size: var(--small);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--muted);
+    }
+  }
+
+  /* ###################
+     Albums and artists: a grid of covers, flat
+     ################### */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 14px 12px;
+    margin: 0;
+    padding: 2px 0;
+    list-style: none;
+  }
+  .grid :global(.card) {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+    padding: 6px;
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .grid :global(.card:hover) {
+    background: var(--hover);
+  }
+  .grid :global(.card:focus-visible) {
+    outline: 1px solid var(--accent);
+  }
+  .grid :global(.art) {
+    aspect-ratio: 1;
+    margin-bottom: 8px;
+    font-size: 30px;
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+  }
+  .grid :global(.art.round) {
+    border-radius: 50%;
+  }
+  .grid :global(.person) {
+    align-items: center;
+    text-align: center;
+  }
+  .grid :global(.person .art) {
+    width: 100%;
+  }
+  .grid :global(b) {
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: var(--text);
+    font-weight: 500;
+    line-height: 1.3;
+    color: var(--ink);
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .grid :global(small) {
+    overflow: hidden;
+    font-size: var(--small);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--muted);
+  }
+
+  .empty {
+    display: none;
+    margin: 60px 0 0;
+    font-size: var(--text);
+    text-align: center;
+    color: var(--muted);
+  }
+  .empty[data-show] {
+    display: block;
+  }
+  .end {
+    height: 1px;
+  }
+[end]

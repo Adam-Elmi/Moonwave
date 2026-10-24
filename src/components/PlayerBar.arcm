@@ -1,0 +1,264 @@
+# ###################
+# PlayerBar: the now-playing bar along the bottom, once something has played (hidden while the
+# Now Playing page is open). Left: the cover, title and artist (click: the Now Playing page). Middle: shuffle, previous, play / pause, next, repeat,
+# and the seek bar with times. Right: volume and the queue button
+# ###################
+runtime ${
+  import { effect, signal } from "arcmoon/reactive";
+  import { current, playing, position, length, volume, shuffle, repeat, playError, toggle, next, previous, seek, setVolume, toggleShuffle, cycleRepeat, queueOpen, toggleQueue, queue, nowOpen, openNow } from "../lib/player.js";
+  import { cover } from "../lib/draw.js";
+  import { makeSlider } from "../lib/slider.js";
+  import { duration } from "../lib/format.js";
+
+  const art = ArcMoon.ref(ArcMoon.defineRef("art"));
+  const bar = ArcMoon.ref(ArcMoon.defineRef("seek"));
+  const loud = ArcMoon.ref(ArcMoon.defineRef("volume"));
+
+  effect(() => {
+    const song = current();
+    art.replaceChildren(song ? cover(song.cover, song.album || song.title, "art") : "");
+  });
+
+  // the seek bar follows the song; while you drag it, the time shows where you'd land
+  const preview = signal(null);
+  const seekBar = makeSlider(bar, { step: 0.02, onInput: (v) => preview(v * length()), onCommit: (v) => (seek(v * length()), preview(null)) });
+  effect(() => seekBar.set(length() ? position() / length() : 0));
+  const loudBar = makeSlider(loud, { onInput: setVolume, onCommit: setVolume });
+  effect(() => loudBar.set(volume()));
+
+  const shown = () => preview() ?? position();
+  const repeatTitle = () => ({ off: "Repeat: off", all: "Repeat: all", one: "Repeat: this song" })[repeat()];
+}$
+
+[footer = class: "player", data-show: runtime ${ queue().length > 0 && !nowOpen() }$]
+  [div = class: "now"]
+    [button = class: "cover", type: "button", title: "Now Playing", arcm-ref: "art", onclick: runtime ${ openNow }$][end]
+    [div = class: "text", title: "Now Playing", onclick: runtime ${ openNow }$]
+      [b]runtime ${ current()?.title || "Untitled" }$[end]
+      [small = data-error: runtime ${ playError() !== "" }$, title: runtime ${ playError() }$]runtime ${ playError() || current()?.artist || "Unknown artist" }$[end]
+    [end]
+  [end:div]
+
+  [div = class: "middle"]
+    [div = class: "controls"]
+      [button = class: "small", type: "button", title: "Shuffle", aria-pressed: runtime ${ String(shuffle()) }$, data-on: runtime ${ shuffle() }$, onclick: runtime ${ toggleShuffle }$]
+        [svg = viewBox: "0 0 16 16", aria-hidden: "true"][path = d: "M2 4.5h2.5c3 0 4 7 7 7H14M12 9.5l2 2-2 2M2 11.5h2.5c1.1 0 1.9-.9 2.5-2M9 6.5c.6-1.1 1.4-2 2.5-2H14M12 2.5l2 2-2 2" !][end]
+      [end]
+      [button = class: "small", type: "button", title: "Previous (Ctrl+←)", onclick: runtime ${ previous }$]
+        [svg = viewBox: "0 0 16 16", aria-hidden: "true"][path = d: "M4 3v10M13 3.5v9L6 8z" !][end]
+      [end]
+      [button = class: "play", type: "button", title: "Play / Pause (Space)", aria-label: runtime ${ playing() ? "Pause" : "Play" }$, onclick: runtime ${ toggle }$]
+        [svg = viewBox: "0 0 16 16", aria-hidden: "true", data-hide: runtime ${ playing() }$][path = class: "solid", d: "M5 3.2v9.6L13 8z" !][end]
+        [svg = viewBox: "0 0 16 16", aria-hidden: "true", data-hide: runtime ${ !playing() }$][path = class: "solid", d: "M4.5 3h2.5v10H4.5zM9 3h2.5v10H9z" !][end]
+      [end]
+      [button = class: "small", type: "button", title: "Next (Ctrl+→)", onclick: runtime ${ () => next() }$]
+        [svg = viewBox: "0 0 16 16", aria-hidden: "true"][path = d: "M12 3v10M3 3.5v9L10 8z" !][end]
+      [end]
+      [button = class: "small", type: "button", title: runtime ${ repeatTitle() }$, data-on: runtime ${ repeat() !== "off" }$, onclick: runtime ${ cycleRepeat }$]
+        [svg = viewBox: "0 0 16 16", aria-hidden: "true"][path = d: "M3 7V6a2 2 0 0 1 2-2h8M11 2l2 2-2 2M13 9v1a2 2 0 0 1-2 2H3M5 14l-2-2 2-2" !][end]
+        [span = class: "one", data-show: runtime ${ repeat() === "one" }$]1[end]
+      [end]
+    [end:div]
+    [div = class: "seek"]
+      [span]runtime ${ duration(shown()) }$[end]
+      [div = class: "bar", arcm-ref: "seek", aria-label: "Seek"][end]
+      [span]runtime ${ duration(length()) }$[end]
+    [end:div]
+  [end:div]
+
+  [div = class: "end"]
+    [svg = class: "speaker", viewBox: "0 0 16 16", aria-hidden: "true"][path = d: "M2.5 6h2.5l3.5-3v10L5 10H2.5zM11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.6a6 6 0 0 1 0 8.8" !][end]
+    [div = class: "volume", arcm-ref: "volume", aria-label: "Volume"][end]
+    [button = class: "small", type: "button", title: "Queue", data-on: runtime ${ queueOpen() }$, onclick: runtime ${ toggleQueue }$]
+      [svg = viewBox: "0 0 16 16", aria-hidden: "true"][path = d: "M2.5 4h8M2.5 8h8M2.5 12h5M12.5 9v5M10 11.5l2.5 2.5 2.5-2.5" !][end]
+    [end]
+  [end:div]
+[end:footer]
+
+[style]
+  .player {
+    display: none;
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 1.6fr) minmax(0, 1fr);
+    align-items: center;
+    gap: 16px;
+    height: 58px;
+    padding: 0 12px;
+    background: var(--panel);
+    border-top: 1px solid var(--line-soft);
+  }
+  .player[data-show] {
+    display: grid;
+  }
+  [data-hide] {
+    display: none;
+  }
+
+  /* left: the song (click: Now Playing) */
+  .now {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+  .cover {
+    display: block;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    padding: 0;
+    background: none;
+    border: 0;
+    cursor: pointer;
+  }
+  .cover :global(.art) {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    overflow: hidden;
+    font: 600 13px var(--font);
+    color: rgb(255 255 255 / 0.92);
+    background: linear-gradient(150deg, hsl(var(--hue) 40% 50%), hsl(var(--hue) 45% 34%));
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-sm);
+  }
+  .cover :global(img) {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    cursor: pointer;
+  }
+  .text b,
+  .text small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .text b {
+    font-size: var(--text);
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .text small {
+    font-size: var(--small);
+    color: var(--muted);
+  }
+  .text small[data-error] {
+    color: var(--error);
+  }
+
+  /* middle: the buttons and the seek bar */
+  .middle {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  button.small {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 26px;
+    padding: 0;
+    color: var(--muted);
+    background: none;
+    border: 0;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+  button.small:hover {
+    color: var(--ink);
+    background: var(--control-hover);
+  }
+  button.small[data-on] {
+    color: var(--accent);
+  }
+  .one {
+    display: none;
+    position: absolute;
+    right: 3px;
+    bottom: 2px;
+    font: 600 8px/1 var(--mono);
+  }
+  .one[data-show] {
+    display: block;
+  }
+  .play {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    margin: 0 4px;
+    padding: 0;
+    color: #fff;
+    background: var(--accent);
+    border: 0;
+    border-radius: 50%;
+    cursor: pointer;
+  }
+  .play:hover {
+    background: var(--accent-hover);
+  }
+  svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .play svg {
+    width: 14px;
+    height: 14px;
+  }
+  .solid {
+    fill: currentColor;
+    stroke: none;
+  }
+  .seek {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    max-width: 520px;
+    font: 400 11px var(--mono);
+    color: var(--muted);
+  }
+  .seek span {
+    width: 36px;
+    text-align: center;
+  }
+  .bar {
+    flex: 1;
+  }
+
+  /* right: volume and the queue */
+  .end {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .speaker {
+    color: var(--muted);
+  }
+  .volume {
+    flex: 0 1 100px;
+    min-width: 60px;
+  }
+[end]

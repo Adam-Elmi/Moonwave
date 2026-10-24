@@ -1,0 +1,644 @@
+# ###################
+# DownloadDialog: paste a YouTube video's link → Look Up shows its thumbnail, title, artist and
+# length (the names can be changed) → choose the folder it's saved in, the format and, if you
+# like, a list → Download.
+# Downloads queue up and run one at a time, with progress; finished songs land in the library.
+# At the bottom: where files go, the downloader's version, and Update downloader. In the corner,
+# how well YouTube can be reached (checked on opening and every 10 s while open). For personal use
+# ###################
+runtime ${
+  import { effect, signal } from "arcmoon/reactive";
+  import { downloadOpen, closeDownload, info, refreshInfo, items, enqueue, cancel, clearFinished, saveTo, setSaveTo } from "../lib/downloads.js";
+  import { downloadPreview, updateDownloader, connectionCheck } from "../lib/api.js";
+  import { lists, folders } from "../lib/state.js";
+  import { duration, signalOf } from "../lib/format.js";
+
+  const link = ArcMoon.ref(ArcMoon.defineRef("link"));
+  const titleField = ArcMoon.ref(ArcMoon.defineRef("title"));
+  const artistField = ArcMoon.ref(ArcMoon.defineRef("artist"));
+  const albumField = ArcMoon.ref(ArcMoon.defineRef("album"));
+  const listPick = ArcMoon.ref(ArcMoon.defineRef("listPick"));
+  const folderPick = ArcMoon.ref(ArcMoon.defineRef("folderPick"));
+
+  // your music folders (those that are there); the open folder (or the remembered one) is chosen
+  const picked = signal("");
+  effect(() => {
+    downloadOpen();
+    const there = folders().filter((f) => f.exists);
+    folderPick.replaceChildren(...there.map((f) => Object.assign(document.createElement("option"), { value: f.id, textContent: f.name, title: f.path })));
+    folderPick.value = saveTo();
+    picked(folderPick.value);
+  });
+  const pickFolder = (e) => {
+    setSaveTo(e.target.value);
+    picked(e.target.value);
+  };
+  const savePath = () => folders().find((f) => f.id === picked())?.path ?? info()?.folder ?? "";
+  const queueList = ArcMoon.ref(ArcMoon.defineRef("queueList"));
+  const thumb = ArcMoon.ref(ArcMoon.defineRef("thumb"));
+
+  const looking = signal(false);
+  const found = signal(null);       // the preview
+  const message = signal("");
+  const format = signal("m4a");
+  const updating = signal("");      // "" / "running" / a result line
+
+  // ###################
+  // The connection: a round trip to YouTube when the dialog opens and every 10 s while it's open
+  // (a check never overlaps the last one); nothing runs while it's closed
+  // ###################
+  const ping = signal(undefined);   // undefined: checking; null: offline; else ms
+  let pinging = false;
+  let pingTimer = null;
+  const checkNow = async () => {
+    if (pinging) return;
+    pinging = true;
+    try {
+      ping(await connectionCheck());
+    } catch {
+      ping(null);
+    }
+    pinging = false;
+  };
+  effect(() => {
+    clearInterval(pingTimer);
+    if (!downloadOpen()) return;
+    ping(undefined);
+    checkNow();
+    pingTimer = setInterval(checkNow, 10_000);
+  });
+  const sig = () => (ping() === undefined ? null : signalOf(ping()));
+  const sigText = () => (ping() === undefined ? "Checking…" : sig().level === "offline" ? "Offline" : `${sig().word} · ${ping()} ms`);
+  const sigTitle = () => (ping() === undefined ? "Checking the connection to YouTube" : ping() === null ? "YouTube can’t be reached. Check your internet connection." : `Round trip to YouTube: ${ping()} ms`);
+  const bar = (n) => ping() !== undefined && (sig()?.bars ?? 0) >= n;
+
+  // opening: focus the link field; closing: let go of the focus (else Space and the other keys
+  // would still count as typing in the hidden dialog)
+  effect(() => {
+    if (downloadOpen()) setTimeout(() => link.focus(), 50);
+    else if (link.closest(".dialog").contains(document.activeElement)) document.activeElement.blur();
+  });
+
+  const lookUp = async (e) => {
+    e?.preventDefault();
+    const url = link.value.trim();
+    if (!url || looking()) return;
+    looking(true);
+    message("");
+    found(null);
+    try {
+      const p = await downloadPreview(url);
+      found(p);
+      titleField.value = p.title;
+      artistField.value = p.artist;
+      albumField.value = p.album;
+      thumb.src = p.thumbnail ?? "";
+    } catch (err) {
+      message(String(err?.message ?? err));
+    }
+    looking(false);
+  };
+
+  const download = () => {
+    const p = found();
+    if (!p) return;
+    const title = titleField.value.trim() || p.title;
+    enqueue({ url: p.url, format: format(), title, artist: artistField.value.trim(), album: albumField.value.trim(), thumbnail: p.thumbnail }, picked() || saveTo(), listPick.value || null);
+    found(null);
+    link.value = "";
+    link.focus();
+  };
+
+  // your lists in the picker (drawn here: no live [for-each] yet)
+  effect(() => {
+    const keep = listPick.value;
+    listPick.replaceChildren(Object.assign(document.createElement("option"), { value: "", textContent: "No list" }), ...lists().map((l) => Object.assign(document.createElement("option"), { value: l.id, textContent: l.name })));
+    listPick.value = lists().some((l) => l.id === keep) ? keep : "";
+  });
+
+  // the queue
+  const WORDS = { starting: "Starting…", downloading: "Downloading", converting: "Converting…", tagging: "Adding the cover…" };
+  effect(() => {
+    queueList.replaceChildren(
+      ...items().map((it) => {
+        const li = document.createElement("li");
+        li.dataset.key = it.key;
+        li.dataset.status = it.status;
+        const text = document.createElement("div");
+        text.className = "text";
+        const name = document.createElement("b");
+        name.textContent = it.title;
+        const what = document.createElement("small");
+        what.textContent =
+          it.status === "running" ? (it.stage === "downloading" ? `${Math.round(it.percent)}%${it.speed ? ` · ${it.speed}` : ""}${it.eta ? ` · ${it.eta} left` : ""}` : WORDS[it.stage] ?? "Starting…")
+          : it.status === "waiting" ? `Waiting · ${it.format.toUpperCase()}`
+          : it.status === "done" ? "In your library"
+          : it.status === "cancelled" ? "Cancelled"
+          : it.error;
+        text.append(name, what);
+        const bar = document.createElement("div");
+        bar.className = "bar";
+        const fill = document.createElement("span");
+        fill.style.width = `${it.status === "done" ? 100 : it.status === "running" ? it.percent : 0}%`;
+        bar.append(fill);
+        text.append(bar);
+        li.append(text);
+        if (it.status === "running" || it.status === "waiting") {
+          const x = document.createElement("button");
+          x.type = "button";
+          x.className = "cancel";
+          x.title = "Cancel";
+          x.textContent = "×";
+          li.append(x);
+        }
+        return li;
+      })
+    );
+  });
+  const queueClick = (e) => {
+    const key = Number(e.target.closest("[data-key]")?.dataset.key);
+    if (e.target.closest(".cancel") && key) cancel(key);
+  };
+
+  const update = async () => {
+    updating("running");
+    try {
+      const version = await updateDownloader();
+      updating(`Updated to ${version}`);
+      refreshInfo();
+    } catch (err) {
+      updating(String(err?.message ?? err));
+    }
+  };
+
+  window.addEventListener("keydown", (e) => {
+    if (downloadOpen() && e.key === "Escape") {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      closeDownload();
+    }
+  }, true);
+  const outside = (e) => e.target === e.currentTarget && closeDownload();
+
+  const finished = () => items().some((it) => ["done", "failed", "cancelled"].includes(it.status));
+  const toolText = () => {
+    const i = info();
+    if (!i) return "";
+    if (!i.version) return "The downloader is missing.";
+    return `yt-dlp ${i.version}${i.updated ? " (updated)" : ""}${i.ffmpeg ? "" : " · ffmpeg missing"}${i.js_runtime ? "" : " · no JavaScript runtime (install node)"}`;
+  };
+}$
+
+[div = class: "backdrop", data-open: runtime ${ downloadOpen() }$, onclick: runtime ${ outside }$]
+  [div = class: "dialog", role: "dialog", aria-label: "Download"]
+    [div = class: "head"]
+      [h2]Download[end]
+      # how well YouTube can be reached
+      [span = class: "signal", data-level: runtime ${ sig()?.level ?? "checking" }$, title: runtime ${ sigTitle() }$, role: "status"]
+        [svg = viewBox: "0 0 16 16", aria-hidden: "true"]
+          [rect = x: "1.5", y: "10.5", width: "2.4", height: "3.5", rx: ".6", data-on: runtime ${ bar(1) }$ !]
+          [rect = x: "5.2", y: "7.8", width: "2.4", height: "6.2", rx: ".6", data-on: runtime ${ bar(2) }$ !]
+          [rect = x: "8.9", y: "5", width: "2.4", height: "9", rx: ".6", data-on: runtime ${ bar(3) }$ !]
+          [rect = x: "12.6", y: "2", width: "2.4", height: "12", rx: ".6", data-on: runtime ${ bar(4) }$ !]
+        [end]
+        runtime ${ sigText() }$
+      [end]
+      [button = class: "x", type: "button", aria-label: "Close", title: "Close (Esc)", onclick: runtime ${ closeDownload }$]×[end]
+    [end:div]
+    [p = class: "intro"]Save a YouTube video’s audio for your own listening. Only download what you have the right to keep.[end]
+
+    [form = class: "link", onsubmit: runtime ${ lookUp }$]
+      [input = type: "text", arcm-ref: "link", placeholder: "https://www.youtube.com/watch?v=…", autocomplete: "off", spellcheck: "false", aria-label: "Video link" !]
+      [button = class: "soft", type: "submit", disabled: runtime ${ looking() }$]runtime ${ looking() ? "Looking…" : "Look Up" }$[end]
+    [end:form]
+    [p = class: "error", data-show: runtime ${ message() !== "" }$]runtime ${ message() }$[end]
+    [p = class: "offline", data-show: runtime ${ ping() === null }$]You’re offline, or YouTube can’t be reached. Downloads won’t work until the connection is back: check your internet and try again.[end]
+
+    # what was found: change the names, pick the format and a list
+    [div = class: "found", data-show: runtime ${ found() !== null }$]
+      [div = class: "preview"]
+        [img = class: "thumb", arcm-ref: "thumb", alt: "" !]
+        [div = class: "facts"]
+          [small]runtime ${ found()?.channel ?? "" }$[end]
+          [small]runtime ${ duration(found()?.duration_ms) }$[end]
+        [end]
+      [end:div]
+      [div = class: "fields"]
+        [label][span]Title[end][input = type: "text", arcm-ref: "title", autocomplete: "off" !][end]
+        [label][span]Artist[end][input = type: "text", arcm-ref: "artist", autocomplete: "off" !][end]
+        [label][span]Album[end][input = type: "text", arcm-ref: "album", placeholder: "Optional", autocomplete: "off" !][end]
+        [label = data-hide: runtime ${ folders().filter((f) => f.exists).length === 0 }$][span]Save to[end][select = arcm-ref: "folderPick", onchange: runtime ${ pickFolder }$][end][end]
+        [label][span]List[end][select = arcm-ref: "listPick"][end][end]
+      [end:div]
+      [div = class: "formats", role: "radiogroup", aria-label: "Format"]
+        [button = type: "button", data-on: runtime ${ format() === "m4a" }$, onclick: runtime ${ () => format("m4a") }$][b]M4A[end][small]Best quality, no re-encoding[end][end]
+        [button = type: "button", data-on: runtime ${ format() === "opus" }$, onclick: runtime ${ () => format("opus") }$][b]Opus[end][small]Smallest, no re-encoding[end][end]
+        [button = type: "button", data-on: runtime ${ format() === "mp3" }$, onclick: runtime ${ () => format("mp3") }$][b]MP3[end][small]Plays everywhere, converted[end][end]
+      [end:div]
+      [div = class: "buttons"]
+        [button = class: "pill", type: "button", onclick: runtime ${ download }$]Download[end]
+      [end:div]
+    [end:div]
+
+    # the queue
+    [div = class: "queue", data-show: runtime ${ items().length > 0 }$]
+      [div = class: "qhead"]
+        [h3]Downloads[end]
+        [button = class: "link-button", type: "button", data-show: runtime ${ finished() }$, onclick: runtime ${ clearFinished }$]Clear finished[end]
+      [end:div]
+      [ul = arcm-ref: "queueList", onclick: runtime ${ queueClick }$][end]
+    [end:div]
+
+    [div = class: "foot"]
+      [small = title: runtime ${ savePath() }$]runtime ${ savePath() ? `Saved to ${savePath().replace(/^\/home\/[^/]+/, "~")}` : "" }$[end]
+      [small]runtime ${ toolText() }$[end]
+      [div = class: "update"]
+        [button = class: "link-button", type: "button", data-show: "", disabled: runtime ${ updating() === "running" }$, onclick: runtime ${ update }$]runtime ${ updating() === "running" ? "Updating…" : "Update downloader" }$[end]
+        [small]runtime ${ updating() === "running" ? "" : updating() }$[end]
+      [end:div]
+    [end:div]
+  [end:div]
+[end:div]
+
+[style]
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: rgb(0 0 0 / 0.35);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+  }
+  .backdrop[data-open] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .dialog {
+    width: min(560px, 100%);
+    max-height: 100%;
+    padding: 20px 22px;
+    overflow-y: auto;
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+  }
+  .head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  h2 {
+    margin: 0;
+    font-size: 15px;
+    color: var(--ink);
+  }
+  /* the connection: four bars (filled by quality) and a word */
+  .signal {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    margin-right: 8px;
+    font: 400 11px var(--mono);
+    color: var(--muted);
+  }
+  .signal svg {
+    width: 15px;
+    height: 15px;
+  }
+  .signal rect {
+    fill: var(--line);
+  }
+  .signal[data-level="good"] rect[data-on] {
+    fill: var(--ok);
+  }
+  .signal[data-level="fair"] rect[data-on] {
+    fill: var(--warn);
+  }
+  .signal[data-level="weak"] rect[data-on] {
+    fill: var(--error);
+  }
+  .signal[data-level="offline"] {
+    color: var(--error);
+  }
+  .signal[data-level="checking"] svg {
+    animation: wait 1.2s ease-in-out infinite;
+  }
+  @keyframes wait {
+    50% {
+      opacity: 0.4;
+    }
+  }
+  .offline {
+    display: none;
+    margin: 10px 0 0;
+    padding: 8px 10px;
+    font-size: var(--small);
+    line-height: 1.45;
+    color: var(--ink);
+    background: color-mix(in srgb, var(--error) 12%, transparent);
+    border-left: 3px solid var(--error);
+    border-radius: var(--radius-sm);
+  }
+  .offline[data-show] {
+    display: block;
+  }
+  .x {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    font-size: 20px;
+    line-height: 1;
+    color: var(--ink);
+    background: var(--control);
+    border: 0;
+    border-radius: 50%;
+    cursor: pointer;
+  }
+  .x:hover {
+    background: var(--control-hover);
+  }
+  .intro {
+    margin: 6px 0 14px;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--muted);
+  }
+  input,
+  select {
+    width: 100%;
+    min-width: 0;
+    height: 28px;
+    padding: 0 10px;
+    font: 400 var(--text) var(--font);
+    color: var(--ink);
+    background: var(--control);
+    border: 0;
+    border-radius: var(--radius);
+    outline: none;
+    user-select: text;
+  }
+  input:focus,
+  select:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: -1px;
+    background: var(--surface);
+  }
+  .link {
+    display: flex;
+    gap: 8px;
+  }
+  .soft,
+  .pill {
+    flex-shrink: 0;
+    height: 28px;
+    padding: 0 18px;
+    font: 500 var(--text)/1 var(--font);
+    border: 0;
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .soft {
+    color: var(--ink);
+    background: var(--control);
+  }
+  .soft:hover:not(:disabled) {
+    background: var(--control-hover);
+  }
+  .soft:disabled {
+    opacity: 0.6;
+  }
+  .pill {
+    color: #fff;
+    background: var(--accent);
+  }
+  .pill:hover {
+    background: var(--accent-hover);
+  }
+  .error,
+  .found,
+  .queue,
+  .link-button {
+    display: none;
+  }
+  .error[data-show],
+  .found[data-show],
+  .queue[data-show] {
+    display: block;
+  }
+  .link-button[data-show] {
+    display: inline;
+  }
+  .error {
+    margin: 10px 0 0;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--error);
+  }
+
+  /* the video: its thumbnail, then the names */
+  .found {
+    margin-top: 16px;
+  }
+  .preview {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+  }
+  .thumb {
+    width: 160px;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    background: var(--control);
+    border-radius: var(--radius);
+  }
+  .facts {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .fields {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .fields label {
+    display: grid;
+    grid-template-columns: 60px 1fr;
+    align-items: center;
+    gap: 10px;
+  }
+  .fields [data-hide] {
+    display: none;
+  }
+  .fields span {
+    font-size: 13px;
+    color: var(--ink);
+  }
+  .formats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .formats button {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 10px;
+    font: inherit;
+    text-align: left;
+    color: var(--ink);
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .formats button[data-on] {
+    border-color: var(--accent);
+    background: var(--selected);
+  }
+  .formats b {
+    font-size: var(--text);
+  }
+  .formats small {
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .buttons {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 14px;
+  }
+
+  /* the queue */
+  .queue {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+  }
+  .qhead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  h3 {
+    margin: 0 0 8px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .queue ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .queue :global(li) {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .queue :global(li:last-child) {
+    border-bottom: 0;
+  }
+  .queue :global(.text) {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .queue :global(b) {
+    overflow: hidden;
+    font-size: var(--text);
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--ink);
+  }
+  .queue :global(small) {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .queue :global(li[data-status="failed"] small) {
+    color: var(--error);
+  }
+  .queue :global(li[data-status="done"] small) {
+    color: var(--ok);
+  }
+  .queue :global(.bar) {
+    height: 4px;
+    margin-top: 4px;
+    overflow: hidden;
+    background: var(--control);
+    border-radius: 2px;
+  }
+  .queue :global(li[data-status="failed"] .bar),
+  .queue :global(li[data-status="cancelled"] .bar) {
+    display: none;
+  }
+  .queue :global(.bar span) {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.3s;
+  }
+  .queue :global(li[data-status="done"] .bar span) {
+    background: var(--ok);
+  }
+  .queue :global(.cancel) {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    font-size: 15px;
+    line-height: 1;
+    color: var(--muted);
+    background: none;
+    border: 0;
+    border-radius: 50%;
+    cursor: pointer;
+  }
+  .queue :global(.cancel:hover) {
+    color: var(--ink);
+    background: var(--control);
+  }
+  .link-button {
+    padding: 0;
+    font: 500 13px var(--font);
+    color: var(--accent);
+    background: none;
+    border: 0;
+    cursor: pointer;
+  }
+  .link-button:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+
+  .foot {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-top: 18px;
+    padding-top: 12px;
+    font-size: 12px;
+    color: var(--muted);
+    border-top: 1px solid var(--line);
+  }
+  .update {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    margin-top: 4px;
+  }
+[end]

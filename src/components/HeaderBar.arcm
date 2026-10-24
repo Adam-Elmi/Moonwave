@@ -1,0 +1,191 @@
+# ###################
+# HeaderBar: a slim title bar in place of the system one, like Zed's: the logo and name, flat
+# buttons (Add Folder, Download with a dot while downloads run); the empty space drags the window
+# (double-click maximizes); on the right the about button (ⓘ), the keyboard button (every shortcut), the theme button
+# (System → Light → Dark) and flat
+# window buttons (close turns red on hover)
+# ###################
+runtime ${
+  import { inWindow, minimize, toggleMaximize, close } from "../lib/window.js";
+  import { startAddFolder, scanStage } from "../lib/state.js";
+  import { openDownload, busy } from "../lib/downloads.js";
+  import { theme, nextTheme, THEME_NAMES } from "../lib/theme.js";
+  import { openShortcuts } from "../lib/shortcuts.js";
+  import { openAbout } from "../lib/about.js";
+  const themeTitle = () => `Theme: ${THEME_NAMES[theme()]} (click for ${THEME_NAMES[{ system: "light", light: "dark", dark: "system" }[theme()]]})`;
+  document.documentElement.toggleAttribute("data-window", inWindow);
+}$
+
+[header = class: "titlebar", data-tauri-drag-region: true]
+  [div = class: "start", data-tauri-drag-region: true]
+    [span = class: "brand", data-tauri-drag-region: true]
+      # the logo, small: the rose crescent and its reflection as four bars
+      [svg = class: "logo", viewBox: "0 0 16 16", aria-hidden: "true"]
+        [path = class: "moon", d: "M8.2.4a5.1 5.1 0 1 0 5 7.1A4.1 4.1 0 1 1 8.2.4z" !]
+        [rect = x: "3.4", y: "11.6", width: "1.8", height: "2.4", rx: ".9" !][rect = x: "6.1", y: "11.6", width: "1.8", height: "4.2", rx: ".9" !][rect = x: "8.8", y: "11.6", width: "1.8", height: "3.2", rx: ".9" !][rect = x: "11.5", y: "11.6", width: "1.8", height: "1.8", rx: ".9" !]
+      [end]
+      Moonwave
+    [end]
+    [span = class: "sep"][end]
+    [button = class: "ghost", type: "button", disabled: runtime ${ scanStage() === "running" }$, onclick: runtime ${ startAddFolder }$]
+      [svg = viewBox: "0 0 16 16", aria-hidden: "true"][path = d: "M8 3.5v9M3.5 8h9" !][end]
+      Add Folder
+    [end]
+    [button = class: "ghost", type: "button", data-busy: runtime ${ busy() }$, onclick: runtime ${ openDownload }$]
+      [svg = viewBox: "0 0 16 16", aria-hidden: "true"][path = d: "M8 2.5v8M4.5 7L8 10.5 11.5 7M3 13h10" !][end]
+      Download
+      [span = class: "dot"][end]
+    [end]
+  [end:div]
+  # about Moonwave
+  [button = class: "ghost icon-only", type: "button", title: "About Moonwave", aria-label: "About Moonwave", onclick: runtime ${ openAbout }$]
+    [svg = viewBox: "0 0 16 16", aria-hidden: "true"][circle = cx: "8", cy: "8", r: "6" !][path = d: "M8 7.2v3.6M8 5h.01" !][end]
+  [end]
+  # every keyboard shortcut
+  [button = class: "ghost icon-only", type: "button", title: "Keyboard shortcuts (?)", aria-label: "Keyboard shortcuts", onclick: runtime ${ openShortcuts }$]
+    [svg = viewBox: "0 0 16 16", aria-hidden: "true"][rect = x: "1.5", y: "4", width: "13", height: "8.5", rx: "1.5" !][path = d: "M4 6.5h.01M6.5 6.5h.01M9 6.5h.01M11.5 6.5h.01M4 9h.01M11.5 9h.01M6 9.8h4" !][end]
+  [end]
+  # the theme: a monitor (System), a sun (Light) or a moon (Dark)
+  [button = class: "ghost theme", type: "button", title: runtime ${ themeTitle() }$, aria-label: runtime ${ themeTitle() }$, onclick: runtime ${ nextTheme }$]
+    [svg = viewBox: "0 0 16 16", aria-hidden: "true", data-hide: runtime ${ theme() !== "system" }$][rect = x: "2", y: "3", width: "12", height: "8.5", rx: "1.2" !][path = d: "M5.5 14h5M8 11.5V14" !][end]
+    [svg = viewBox: "0 0 16 16", aria-hidden: "true", data-hide: runtime ${ theme() !== "light" }$][circle = cx: "8", cy: "8", r: "2.8" !][path = d: "M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" !][end]
+    [svg = viewBox: "0 0 16 16", aria-hidden: "true", data-hide: runtime ${ theme() !== "dark" }$][path = d: "M13.2 9.8A5.6 5.6 0 0 1 6.2 2.8a5.6 5.6 0 1 0 7 7z" !][end]
+  [end]
+  [div = class: "controls"]
+    [button = class: "control", type: "button", aria-label: "Minimize", onclick: runtime ${ minimize }$]
+      [svg = viewBox: "0 0 16 16", aria-hidden: "true"][path = d: "M4 8h8" !][end]
+    [end]
+    [button = class: "control", type: "button", aria-label: "Maximize", onclick: runtime ${ toggleMaximize }$]
+      [svg = viewBox: "0 0 16 16", aria-hidden: "true"][rect = x: "4.5", y: "4.5", width: "7", height: "7", rx: "1" !][end]
+    [end]
+    [button = class: "control close", type: "button", aria-label: "Close", onclick: runtime ${ close }$]
+      [svg = viewBox: "0 0 16 16", aria-hidden: "true"][path = d: "M5 5l6 6M11 5l-6 6" !][end]
+    [end]
+  [end:div]
+[end:header]
+
+[style]
+  .titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 34px;
+    padding: 0 4px 0 10px;
+    background: var(--headerbar);
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .start {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 2px;
+    align-self: stretch;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font: 500 var(--text) var(--font);
+    color: var(--ink);
+  }
+  .logo {
+    width: 16px;
+    height: 16px;
+  }
+  .logo * {
+    stroke: none;
+  }
+  .logo .moon {
+    fill: var(--accent);
+  }
+  .logo rect {
+    fill: var(--ink);
+    opacity: 0.75;
+  }
+  .sep {
+    width: 1px;
+    height: 16px;
+    margin: 0 8px;
+    background: var(--line);
+  }
+  /* flat buttons, like Zed's title bar */
+  .ghost {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 8px;
+    font: 400 var(--text) var(--font);
+    color: var(--muted);
+    background: none;
+    border: 0;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+  .ghost:hover:not(:disabled) {
+    color: var(--ink);
+    background: var(--control-hover);
+  }
+  .ghost:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .icon-only,
+  .theme {
+    width: 28px;
+    justify-content: center;
+    margin-right: 4px;
+    padding: 0;
+  }
+  [data-hide] {
+    display: none;
+  }
+  .dot {
+    display: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .ghost[data-busy] .dot {
+    display: block;
+  }
+
+  /* window buttons: flat; only in the desktop window */
+  .controls {
+    display: none;
+    gap: 2px;
+  }
+  :global(:root[data-window]) .controls {
+    display: flex;
+  }
+  .control {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 26px;
+    padding: 0;
+    color: var(--muted);
+    background: none;
+    border: 0;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+  .control:hover {
+    color: var(--ink);
+    background: var(--control-hover);
+  }
+  .control.close:hover {
+    color: #fff;
+    background: var(--error);
+  }
+[end]

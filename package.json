@@ -1,0 +1,25 @@
+{
+	"name": "moonwave",
+	"version": "1.0.0",
+	"private": true,
+	"license": "MIT",
+	"description": "A music player that lets you download your favorite songs from YouTube",
+	"type": "module",
+	"scripts": {
+		"build": "arcm build pages",
+		"watch": "node scripts/watch.js",
+		"test": "vitest run",
+		"dev": "tauri dev",
+		"app": "tauri build",
+		"tauri": "tauri"
+	},
+	"dependencies": {
+		"@fontsource/ibm-plex-mono": "^5.3.0",
+		"@fontsource/ibm-plex-sans": "^5.3.0",
+		"arcmoon": "^1.1.0"
+	},
+	"devDependencies": {
+		"@tauri-apps/cli": "^2.12.3",
+		"vitest": "^5.0.5"
+	}
+}

@@ -1,0 +1,34 @@
+# ###################
+# Note: a short message in the bottom-right corner after an action (a Zed-like toast) ("Added 3 songs to Night Drive")
+# ###################
+runtime ${
+  import { note } from "../lib/state.js";
+}$
+
+[div = class: "note", role: "status", data-show: runtime ${ note() !== "" }$]runtime ${ note() }$[end]
+
+[style]
+  .note {
+    position: fixed;
+    right: 14px;
+    bottom: 96px;
+    z-index: 25;
+    max-width: min(380px, 80%);
+    padding: 8px 12px;
+    font-size: var(--text);
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(6px);
+    transition: opacity 0.15s, transform 0.15s;
+  }
+  .note[data-show] {
+    opacity: 1;
+    transform: none;
+  }
+[end]

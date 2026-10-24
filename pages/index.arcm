@@ -1,0 +1,223 @@
+# ###################
+# Moonwave: the page shell. Each part is a component in src/components;
+# the page only lays them out and holds the color tokens
+# ###################
+[import = Splash: "@/components/Splash.arcm" !]
+[import = HeaderBar: "@/components/HeaderBar.arcm" !]
+[import = EmptyState: "@/components/EmptyState.arcm" !]
+[import = LibraryView: "@/components/LibraryView.arcm" !]
+[import = ScanDialog: "@/components/ScanDialog.arcm" !]
+[import = ConfirmDialog: "@/components/ConfirmDialog.arcm" !]
+[import = PlayerBar: "@/components/PlayerBar.arcm" !]
+[import = QueuePanel: "@/components/QueuePanel.arcm" !]
+[import = SongMenu: "@/components/SongMenu.arcm" !]
+[import = ListDialog: "@/components/ListDialog.arcm" !]
+[import = Note: "@/components/Note.arcm" !]
+[import = DownloadDialog: "@/components/DownloadDialog.arcm" !]
+[import = NowPlaying: "@/components/NowPlaying.arcm" !]
+[import = StatusBar: "@/components/StatusBar.arcm" !]
+[import = ShortcutsDialog: "@/components/ShortcutsDialog.arcm" !]
+[import = AboutCard: "@/components/AboutCard.arcm" !]
+
+[doctype!]
+[html = lang: "en"]
+  [head]
+    [meta = charset: "utf-8" !]
+    [meta = name: "viewport", content: "width=device-width, initial-scale=1" !]
+    [title]Moonwave[end]
+  [end:head]
+  [body]
+    [Splash !]
+    [div = class: "app"]
+      [HeaderBar !]
+      [main = class: "main"]
+        [EmptyState !]
+        [LibraryView !]
+        [NowPlaying !]
+        [QueuePanel !]
+      [end:main]
+      [PlayerBar !]
+      [StatusBar !]
+      [SongMenu !]
+      [ListDialog !]
+      [Note !]
+      [DownloadDialog !]
+      [ShortcutsDialog !]
+      [AboutCard !]
+      [ScanDialog !]
+      [ConfirmDialog !]
+    [end:div]
+  [end:body]
+[end:html]
+
+[style]
+  /* ###################
+     A Zed-like look: IBM Plex (the family Zed's own font comes from), cool greys, thin 1 px
+     lines, small corners, dense rows; Moonwave rose stays the accent. The theme is System (light
+     or dark like the desktop), Light or Dark, chosen in the title bar (theme.js). Components use these tokens, never their own colors
+     ################### */
+  @import "@fontsource/ibm-plex-sans/latin-400.css";
+  @import "@fontsource/ibm-plex-sans/latin-500.css";
+  @import "@fontsource/ibm-plex-sans/latin-600.css";
+  @import "@fontsource/ibm-plex-mono/latin-400.css";
+
+  :root {
+    --font: "IBM Plex Sans", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+    --text: 13px;
+    --small: 12px;
+    --row: 30px;
+    --radius-sm: 4px;
+    --radius: 6px;
+    --radius-lg: 8px;
+
+    --bg: #fafafa;              /* the main area (Zed's editor) */
+    --surface: #ffffff;         /* raised things: dialogs, menus, boxed lists */
+    --panel: #f0f0f1;           /* the sidebar, queue, Up Next */
+    --headerbar: #e7e7e9;       /* title bar, tabs bar, status bar */
+    --line: #d4d4d8;
+    --line-soft: #e4e4e7;
+    --ink: #24252a;
+    --muted: #6b6c73;
+    --faint: #9a9ba3;
+    --accent: #c2255c;          /* rose, from the logo */
+    --accent-hover: #a61e4d;
+    --control: rgb(0 0 0 / 0.05);
+    --control-hover: rgb(0 0 0 / 0.09);
+    --hover: rgb(0 0 0 / 0.04);
+    --selected: rgb(194 37 92 / 0.1);
+    --shadow: 0 8px 24px rgb(0 0 0 / 0.14);
+    --ok: #2f9e44;
+    --warn: #e67700;
+    --error: #d6336c;
+    color-scheme: light;
+  }
+  /* dark: chosen in the title bar (data-theme="dark"), or the system's when the choice is System */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #282c33;
+      --surface: #2f343e;
+      --panel: #2b2f37;
+      --headerbar: #333842;
+      --line: #464b57;
+      --line-soft: #363c46;
+      --ink: #dce0e5;
+      --muted: #a9afbc;
+      --faint: #7a808d;
+      --accent: #f06595;
+      --accent-hover: #e64980;
+      --control: rgb(255 255 255 / 0.06);
+      --control-hover: rgb(255 255 255 / 0.1);
+      --hover: rgb(255 255 255 / 0.04);
+      --selected: rgb(240 101 149 / 0.16);
+      --shadow: 0 8px 28px rgb(0 0 0 / 0.45);
+      --ok: #51cf66;
+      --warn: #ffa94d;
+      --error: #ff6b8a;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #282c33;
+    --surface: #2f343e;
+    --panel: #2b2f37;
+    --headerbar: #333842;
+    --line: #464b57;
+    --line-soft: #363c46;
+    --ink: #dce0e5;
+    --muted: #a9afbc;
+    --faint: #7a808d;
+    --accent: #f06595;
+    --accent-hover: #e64980;
+    --control: rgb(255 255 255 / 0.06);
+    --control-hover: rgb(255 255 255 / 0.1);
+    --hover: rgb(255 255 255 / 0.04);
+    --selected: rgb(240 101 149 / 0.16);
+    --shadow: 0 8px 28px rgb(0 0 0 / 0.45);
+    --ok: #51cf66;
+    --warn: #ffa94d;
+    --error: #ff6b8a;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+  }
+  * {
+    box-sizing: border-box;
+  }
+  html,
+  body {
+    height: 100%;
+    margin: 0;
+  }
+  body {
+    font: 400 var(--text) / 1.4 var(--font);
+    color: var(--ink);
+    background: var(--bg);
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  /* ###################
+     The slider (seek and volume; slider.js): a thin track filled in rose up to --at,
+     and a thumb that shows on hover, focus and while dragging
+     ################### */
+  .slider {
+    position: relative;
+    display: block;
+    height: 18px;
+    cursor: pointer;
+    touch-action: none;
+    outline: none;
+    --at: 0;
+  }
+  .slider .track {
+    position: absolute;
+    top: 50%;
+    right: 0;
+    left: 0;
+    height: 4px;
+    overflow: hidden;
+    background: var(--control-hover);
+    border-radius: 2px;
+    transform: translateY(-50%);
+  }
+  .slider .fill {
+    position: absolute;
+    inset: 0;
+    background: var(--accent);
+    transform: scaleX(var(--at));
+    transform-origin: left;
+  }
+  .slider .thumb {
+    position: absolute;
+    top: 50%;
+    left: calc(var(--at) * 100%);
+    width: 12px;
+    height: 12px;
+    background: var(--ink);
+    border-radius: 50%;
+    opacity: 0;
+    transform: translate(-50%, -50%);
+    transition: opacity 0.1s;
+  }
+  .slider:hover .thumb,
+  .slider:focus-visible .thumb,
+  .slider[data-dragging] .thumb {
+    opacity: 1;
+  }
+  .slider:focus-visible .track {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+  }
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+  .main {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+[end]
