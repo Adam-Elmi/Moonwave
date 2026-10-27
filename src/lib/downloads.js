@@ -7,6 +7,7 @@
 import { signal } from "arcmoon/reactive";
 import { downloadSong, cancelDownload, onDownloadProgress, downloaderInfo } from "./api.js";
 import { refreshLibrary, refreshLists, showNote, folders, detail } from "./state.js";
+import { joinQueue } from "./player.js";
 
 export const downloadOpen = signal(false);
 export const openDownload = () => {
@@ -66,6 +67,7 @@ const run = async () => {
 			showNote(`“${next.title}” is in your library`);
 			refreshLibrary();
 			if (next.list) refreshLists();
+			joinQueue();
 		} catch (e) {
 			const error = String(e?.message ?? e);
 			change(next.key, error === "Cancelled." ? { status: "cancelled" } : { status: "failed", error });

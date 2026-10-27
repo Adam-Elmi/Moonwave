@@ -4,6 +4,7 @@
 // ###################
 
 import { signal } from "arcmoon/reactive";
+import { playList, fillQueue } from "./player.js";
 import { inApp, libraryStatus, pickFolder, addFolder, rescanFolder, listFolders, removeFolder, onScanProgress, listSongs, listAlbums, listArtists, listLists, createList, renameList, deleteList, addToList, removeFromList, moveInList, listSongsOf, deleteSong } from "./api.js";
 
 // ###################
@@ -21,6 +22,13 @@ export const refreshStatus = async () => {
 		problem(String(e?.message ?? e));
 	}
 };
+
+// ###################
+// The sidebar on a narrow window: hidden behind ☰, slides in over the page
+// ###################
+export const sideOpen = signal(false);
+export const toggleSide = () => sideOpen(!sideOpen());
+export const closeSide = () => sideOpen(false);
 
 // ###################
 // The music folders
@@ -104,6 +112,28 @@ export const reload = async () => {
 };
 // every song in what's on screen (the player's queue when you play one of them)
 export const songsInView = async () => (detail() && detail().kind !== "folder" ? songs() : (await listSongs({ ...songQuery(0), offset: 0, limit: 100000 })).songs);
+// the view on screen as it is now, to fetch again later: the queue's source
+export const viewSource = () => {
+	const d = detail();
+	if (d?.kind === "list") return () => listSongsOf(d.id).then((p) => p.songs);
+	const query = { ...songQuery(0), offset: 0, limit: d?.kind === "smart" ? 100 : 100000 };
+	return () => listSongs(query).then((p) => p.songs);
+};
+// play a song on screen: the whole view becomes the queue, right away on a page, a moment later
+// for Songs and folders (they load a page at a time). false when the song isn't on screen
+export const playFromView = (id) => {
+	const loaded = songs();
+	const at = loaded.findIndex((s) => s.id === id);
+	if (at < 0) return false;
+	const whole = detail() && detail().kind !== "folder";
+	playList(whole ? loaded : [loaded[at]], whole ? at : 0, viewSource());
+	if (!whole)
+		songsInView().then((all) => {
+			const i = all.findIndex((s) => s.id === id);
+			if (i >= 0) fillQueue(all, i);
+		}, () => {});
+	return true;
+};
 export const loadMore = () => {
 	if (!loading() && songs().length < songTotal()) loadSongs(songs().length);
 };

@@ -3,37 +3,42 @@
 # buttons (Add Folder, Download with a dot while downloads run); the empty space drags the window
 # (double-click maximizes); on the right the about button (ⓘ), the keyboard button (every shortcut), the theme button
 # (System → Light → Dark) and flat
-# window buttons (close turns red on hover)
+# window buttons (close turns red on hover). Narrow: ☰ opens the sidebar, the buttons lose their
+# names (tooltips stay), then the name "Moonwave" goes; the window buttons always stay
 # ###################
 runtime ${
   import { inWindow, minimize, toggleMaximize, close } from "../lib/window.js";
-  import { startAddFolder, scanStage } from "../lib/state.js";
+  import { startAddFolder, scanStage, toggleSide, sideOpen, folders, status } from "../lib/state.js";
   import { openDownload, busy } from "../lib/downloads.js";
   import { theme, nextTheme, THEME_NAMES } from "../lib/theme.js";
   import { openShortcuts } from "../lib/shortcuts.js";
   import { openAbout } from "../lib/about.js";
+  import { nowOpen } from "../lib/player.js";
   const themeTitle = () => `Theme: ${THEME_NAMES[theme()]} (click for ${THEME_NAMES[{ system: "light", light: "dark", dark: "system" }[theme()]]})`;
   document.documentElement.toggleAttribute("data-window", inWindow);
 }$
 
 [header = class: "titlebar", data-tauri-drag-region: true]
   [div = class: "start", data-tauri-drag-region: true]
+    [button = class: "ghost icon-only menu", type: "button", title: "Lists and folders", aria-label: "Lists and folders", aria-expanded: runtime ${ String(sideOpen()) }$, data-hide: runtime ${ nowOpen() || (folders().length === 0 && (status()?.tracks ?? 0) === 0) }$, onclick: runtime ${ toggleSide }$]
+      [svg = viewBox: "0 0 16 16", aria-hidden: "true"][path = d: "M2.5 4h11M2.5 8h11M2.5 12h11" !][end]
+    [end]
     [span = class: "brand", data-tauri-drag-region: true]
       # the logo, small: the rose crescent and its reflection as four bars
       [svg = class: "logo", viewBox: "0 0 16 16", aria-hidden: "true"]
         [path = class: "moon", d: "M8.2.4a5.1 5.1 0 1 0 5 7.1A4.1 4.1 0 1 1 8.2.4z" !]
         [rect = x: "3.4", y: "11.6", width: "1.8", height: "2.4", rx: ".9" !][rect = x: "6.1", y: "11.6", width: "1.8", height: "4.2", rx: ".9" !][rect = x: "8.8", y: "11.6", width: "1.8", height: "3.2", rx: ".9" !][rect = x: "11.5", y: "11.6", width: "1.8", height: "1.8", rx: ".9" !]
       [end]
-      Moonwave
+      [span = class: "name", data-tauri-drag-region: true]Moonwave[end]
     [end]
     [span = class: "sep"][end]
-    [button = class: "ghost", type: "button", disabled: runtime ${ scanStage() === "running" }$, onclick: runtime ${ startAddFolder }$]
+    [button = class: "ghost", type: "button", title: "Add Folder (Ctrl+O)", disabled: runtime ${ scanStage() === "running" }$, onclick: runtime ${ startAddFolder }$]
       [svg = viewBox: "0 0 16 16", aria-hidden: "true"][path = d: "M8 3.5v9M3.5 8h9" !][end]
-      Add Folder
+      [span = class: "label"]Add Folder[end]
     [end]
-    [button = class: "ghost", type: "button", data-busy: runtime ${ busy() }$, onclick: runtime ${ openDownload }$]
+    [button = class: "ghost", type: "button", title: "Download (Ctrl+D)", data-busy: runtime ${ busy() }$, onclick: runtime ${ openDownload }$]
       [svg = viewBox: "0 0 16 16", aria-hidden: "true"][path = d: "M8 2.5v8M4.5 7L8 10.5 11.5 7M3 13h10" !][end]
-      Download
+      [span = class: "label"]Download[end]
       [span = class: "dot"][end]
     [end]
   [end:div]
@@ -71,7 +76,7 @@ runtime ${
     justify-content: space-between;
     height: 34px;
     padding: 0 4px 0 10px;
-    background: var(--headerbar);
+    background: var(--bar);
     border-bottom: 1px solid var(--line-soft);
   }
   .start {
@@ -79,7 +84,12 @@ runtime ${
     flex: 1;
     align-items: center;
     gap: 2px;
+    min-width: 0;
     align-self: stretch;
+    overflow: hidden;
+  }
+  .titlebar > :not(.start) {
+    flex-shrink: 0;
   }
   .brand {
     display: flex;
@@ -154,7 +164,7 @@ runtime ${
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--accent);
+    background: var(--accent-fill);
   }
   .ghost[data-busy] .dot {
     display: block;
@@ -187,5 +197,31 @@ runtime ${
   .control.close:hover {
     color: #fff;
     background: var(--error);
+  }
+
+  /* narrow windows */
+  .menu {
+    display: none;
+    margin-right: 6px;
+  }
+  @media (max-width: 720px) {
+    .menu:not([data-hide]) {
+      display: inline-flex;
+    }
+    .label {
+      display: none;
+    }
+    .ghost {
+      padding: 0 7px;
+    }
+    .sep {
+      margin: 0 4px;
+    }
+  }
+  @media (max-width: 420px) {
+    .brand .name,
+    .sep {
+      display: none;
+    }
   }
 [end]

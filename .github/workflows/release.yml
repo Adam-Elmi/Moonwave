@@ -1,9 +1,11 @@
 # ###################
-# Release: builds Moonwave on Ubuntu 22.04 (its older system libraries make the packages run on
-# most Linux systems) and puts the AppImage, .deb and .rpm on a draft GitHub release, with the
-# notes from .github/release-notes.md. Runs when a tag like v1.0.0 is pushed, or by hand
+# Release: builds Moonwave for Linux and Windows and puts the packages on one draft GitHub
+# release, with the notes from .github/release-notes.md. Linux builds on Ubuntu 22.04 (its older
+# system libraries make the packages run on most Linux systems): AppImage, .deb and .rpm.
+# Windows builds the .msi and the setup .exe. Runs when a tag like v1.0.0 is pushed, or by hand
 # (Actions → Release → Run workflow). The tests run first, so a broken build never ships.
-# The bundled tools (yt-dlp, ffmpeg) are fetched and checked by scripts/fetch-tools.sh
+# The bundled tools (yt-dlp, ffmpeg, and deno on Windows) are fetched and checked by
+# scripts/fetch-tools.sh
 # ###################
 name: Release
 
@@ -16,12 +18,46 @@ permissions:
   contents: write
 
 jobs:
-  linux:
+  # the draft release both builds attach to (two builds each making one would make two drafts)
+  draft:
     runs-on: ubuntu-22.04
+    outputs:
+      id: ${{ steps.make.outputs.result }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: make
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            const version = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8")).version;
+            const tag = context.ref.startsWith("refs/tags/") ? context.ref.slice(10) : `v${version}`;
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: `Moonwave ${tag}`,
+              body: fs.readFileSync(".github/release-notes.md", "utf8"),
+              draft: true,
+              prerelease: false,
+            });
+            return data.id;
+
+  build:
+    needs: draft
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
       - name: System libraries for Tauri
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf build-essential libssl-dev
@@ -40,7 +76,7 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Bundled tools (yt-dlp, ffmpeg, ffprobe)
+      - name: Bundled tools (yt-dlp, ffmpeg, ffprobe; deno on Windows)
         run: ./scripts/fetch-tools.sh
 
       # the page first: Tauri's generate_context! reads dist/ (gitignored, so not in the checkout)
@@ -52,22 +88,9 @@ jobs:
           npm test
           cd src-tauri && cargo test
 
-      - name: Release notes
-        id: notes
-        run: |
-          {
-            echo "body<<NOTES_END"
-            cat .github/release-notes.md
-            echo "NOTES_END"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Build and attach to a draft release
+      - name: Build and attach to the draft release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
-          releaseName: Moonwave ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
-          releaseBody: ${{ steps.notes.outputs.body }}
-          releaseDraft: true
-          prerelease: false
+          releaseId: ${{ needs.draft.outputs.id }}

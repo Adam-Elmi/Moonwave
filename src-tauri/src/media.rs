@@ -1,5 +1,6 @@
 // ###################
-// Media keys and the system media panel (MPRIS on Linux, through souvlaki): the page tells Rust
+// Media keys and the system media panel (MPRIS on Linux, the media overlay on Windows, through
+// souvlaki, which needs the window there): the page tells Rust
 // what's playing; the keys and the panel's buttons come back to the page as "media-control".
 // If the system has no media service, Moonwave just plays without it
 // ###################
@@ -52,7 +53,14 @@ pub fn to_control(event: MediaControlEvent) -> Option<Control> {
 }
 
 pub fn start(app: &AppHandle) -> Option<MediaControls> {
-	let config = PlatformConfig { display_name: "Moonwave", dbus_name: "moonwave", hwnd: None };
+	#[cfg(windows)]
+	let hwnd = {
+		use tauri::Manager;
+		Some(app.get_webview_window("main")?.hwnd().ok()?.0 as *mut std::ffi::c_void)
+	};
+	#[cfg(not(windows))]
+	let hwnd = None;
+	let config = PlatformConfig { display_name: "Moonwave", dbus_name: "moonwave", hwnd };
 	let mut controls = MediaControls::new(config).ok()?;
 	let app = app.clone();
 	controls
@@ -65,10 +73,15 @@ pub fn start(app: &AppHandle) -> Option<MediaControls> {
 	Some(controls)
 }
 
+// a cover's file:// link: file:///home/… on Linux, file:///C:/Users/… on Windows
+pub fn file_url(path: &str) -> String {
+	if cfg!(windows) { format!("file:///{}", path.replace('\\', "/")) } else { format!("file://{path}") }
+}
+
 pub fn update(media: &Media, now: &NowPlaying) -> Result<(), String> {
 	let mut guard = media.0.lock().map_err(|e| e.to_string())?;
 	let Some(controls) = guard.as_mut() else { return Ok(()) };
-	let cover = now.cover.as_ref().map(|path| format!("file://{path}"));
+	let cover = now.cover.as_deref().map(file_url);
 	controls
 		.set_metadata(MediaMetadata {
 			title: Some(&now.title),

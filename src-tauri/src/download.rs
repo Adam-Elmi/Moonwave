@@ -14,24 +14,40 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 
 // ###################
-// The tools: the updated yt-dlp (data folder) or the bundled one (next to Moonwave), else PATH
+// The tools: the updated yt-dlp (data folder) or the bundled one (next to Moonwave), else PATH.
+// On Windows they're .exe files, and they run without a console window
 // ###################
 pub struct Tools {
 	pub data: PathBuf,   // the app's data folder
 }
 
+// a tool's file name: "ffmpeg", or "ffmpeg.exe" on Windows
+pub fn exe(name: &str) -> String {
+	format!("{name}{}", std::env::consts::EXE_SUFFIX)
+}
+
+// no console window flashing up for each tool on Windows
+pub fn quiet(cmd: &mut Command) -> &mut Command {
+	#[cfg(windows)]
+	{
+		use std::os::windows::process::CommandExt;
+		cmd.creation_flags(0x0800_0000);   // CREATE_NO_WINDOW
+	}
+	cmd
+}
+
 fn beside_app(name: &str) -> Option<PathBuf> {
-	let path = std::env::current_exe().ok()?.parent()?.join(name);
+	let path = std::env::current_exe().ok()?.parent()?.join(exe(name));
 	path.is_file().then_some(path)
 }
 
 fn on_path(name: &str) -> Option<PathBuf> {
-	std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).map(|p| p.join(name)).find(|p| p.is_file()))
+	std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).map(|p| p.join(exe(name))).find(|p| p.is_file()))
 }
 
 impl Tools {
 	pub fn updated(&self) -> PathBuf {
-		self.data.join("tools").join("yt-dlp")
+		self.data.join("tools").join(exe("yt-dlp"))
 	}
 	pub fn yt_dlp(&self) -> Option<PathBuf> {
 		let updated = self.updated();
@@ -44,13 +60,16 @@ impl Tools {
 	pub fn ffmpeg_dir(&self) -> Option<PathBuf> {
 		beside_app("ffmpeg").or_else(|| on_path("ffmpeg")).and_then(|p| p.parent().map(Path::to_path_buf))
 	}
-	// yt-dlp needs a JavaScript runtime for YouTube; node, deno or bun from the system
+	// yt-dlp needs a JavaScript runtime for YouTube: the bundled deno (Windows), else deno, node
+	// or bun from the system
 	pub fn js_runtime(&self) -> Option<String> {
-		["deno", "node", "bun"].iter().find_map(|name| on_path(name).map(|p| format!("{name}:{}", p.display())))
+		let found = |name: &str, path: PathBuf| format!("{name}:{}", path.display());
+		beside_app("deno").map(|p| found("deno", p)).or_else(|| ["deno", "node", "bun"].iter().find_map(|name| on_path(name).map(|p| found(name, p))))
 	}
 	fn command(&self) -> Result<Command, String> {
 		let yt = self.yt_dlp().ok_or("The downloader (yt-dlp) is missing. Use Update downloader to fetch it.")?;
 		let mut cmd = Command::new(yt);
+		quiet(&mut cmd);
 		cmd.args(["--no-playlist", "--no-warnings", "--no-color", "--ignore-config"]);
 		if let Some(dir) = self.ffmpeg_dir() {
 			cmd.arg("--ffmpeg-location").arg(dir);
@@ -74,7 +93,7 @@ pub struct Info {
 pub fn info(tools: &Tools, folder: &Path) -> Info {
 	let version = tools
 		.yt_dlp()
-		.and_then(|yt| Command::new(yt).arg("--version").output().ok())
+		.and_then(|yt| quiet(&mut Command::new(yt)).arg("--version").output().ok())
 		.filter(|o| o.status.success())
 		.map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
 		.unwrap_or_default();
@@ -351,7 +370,8 @@ pub fn ping() -> Result<u64, String> {
 }
 
 // ###################
-// Update downloader: the newest yt-dlp, checked against its release's checksums
+// Update downloader: the newest yt-dlp (the Linux or the Windows build), checked against its
+// release's checksums
 // ###################
 pub fn update(tools: &Tools) -> Result<String, String> {
 	use sha2::{Digest, Sha256};
@@ -360,9 +380,10 @@ pub fn update(tools: &Tools) -> Result<String, String> {
 		let mut body = ureq::get(&format!("{base}/{name}")).call().map_err(|e| format!("Couldn’t reach GitHub ({e})."))?.into_body();
 		body.with_config().limit(limit).read_to_vec().map_err(|e| e.to_string())
 	};
+	let asset = if cfg!(windows) { "yt-dlp.exe" } else { "yt-dlp_linux" };
 	let sums = String::from_utf8(fetch("SHA2-256SUMS", 1024 * 1024)?).map_err(|e| e.to_string())?;
-	let want = sums.lines().find_map(|l| l.strip_suffix(" yt-dlp_linux").map(|h| h.trim().to_lowercase())).ok_or("The release has no checksum for yt-dlp_linux.")?;
-	let binary = fetch("yt-dlp_linux", 200 * 1024 * 1024)?;
+	let want = sums.lines().find_map(|l| l.strip_suffix(&format!(" {asset}")).map(|h| h.trim().to_lowercase())).ok_or(format!("The release has no checksum for {asset}."))?;
+	let binary = fetch(asset, 200 * 1024 * 1024)?;
 	let got: String = Sha256::digest(&binary).iter().map(|b| format!("{b:02x}")).collect();
 	if got != want {
 		return Err("The download didn’t match its checksum, so it wasn’t used.".into());
@@ -377,7 +398,7 @@ pub fn update(tools: &Tools) -> Result<String, String> {
 		std::fs::set_permissions(&temp, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
 	}
 	std::fs::rename(&temp, &target).map_err(|e| e.to_string())?;
-	let out = Command::new(&target).arg("--version").output().map_err(|e| e.to_string())?;
+	let out = quiet(&mut Command::new(&target)).arg("--version").output().map_err(|e| e.to_string())?;
 	Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 

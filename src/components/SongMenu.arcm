@@ -7,7 +7,7 @@
 runtime ${
   import { menu, closeMenu } from "../lib/menu.js";
   import { playList, playNext, addToQueue, current, dropSong } from "../lib/player.js";
-  import { openAlbum, openArtist, pickList, askDeleteSong, takeFromList } from "../lib/state.js";
+  import { openAlbum, openArtist, pickList, askDeleteSong, takeFromList, playFromView } from "../lib/state.js";
 
   const box = ArcMoon.ref(ArcMoon.defineRef("box"));
   const isPlaying = () => Boolean(song()) && current()?.id === song().id;
@@ -26,7 +26,7 @@ runtime ${
     const m = menu();
     closeMenu();
     if (!s) return;
-    if (what === "play") playList([s]);
+    if (what === "play") playFromView(s.id) || playList([s]);
     else if (what === "next") playNext(s);
     else if (what === "queue") addToQueue(s);
     else if (what === "list") pickList([s.id]);

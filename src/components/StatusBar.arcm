@@ -38,7 +38,7 @@ runtime ${
     padding: 0 10px;
     font: 400 11px var(--mono);
     color: var(--muted);
-    background: var(--headerbar);
+    background: var(--bar);
     border-top: 1px solid var(--line-soft);
   }
   .statusbar[data-show] {
@@ -66,7 +66,7 @@ runtime ${
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--accent);
+    background: var(--accent-fill);
     animation: pulse 1.2s ease-in-out infinite;
   }
   @keyframes pulse {

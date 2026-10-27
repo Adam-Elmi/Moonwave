@@ -109,6 +109,8 @@ runtime ${
     inset: 0;
     z-index: 20;
     display: grid;
+    /* the tracks are the room left, so the dialog's width: min(…, 100%) fits small windows */
+    grid-template: minmax(0, 1fr) / minmax(0, 1fr);
     place-items: center;
     padding: 24px;
     background: rgb(0 0 0 / 0.35);
@@ -244,10 +246,10 @@ runtime ${
   }
   .pill {
     color: #fff;
-    background: var(--accent);
+    background: var(--accent-fill);
   }
   .pill:hover {
-    background: var(--accent-hover);
+    background: var(--accent-fill-hover);
   }
   .pill:disabled {
     opacity: 0.6;

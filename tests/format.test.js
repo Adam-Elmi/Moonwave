@@ -2,7 +2,7 @@
 // format.js: song lengths and counts
 // ###################
 import { expect, test } from "vitest";
-import { duration, count, initials, hue, signalOf } from "../src/lib/format.js";
+import { duration, count, initials, hue, signalOf, home } from "../src/lib/format.js";
 
 test("song lengths", () => {
 	expect(duration(215000)).toBe("3:35");
@@ -32,4 +32,11 @@ test("connection signal from the round trip", () => {
 	expect(signalOf(178)).toEqual({ level: "good", bars: 3, word: "Good" });
 	expect(signalOf(400).level).toBe("fair");
 	expect(signalOf(900)).toEqual({ level: "weak", bars: 1, word: "Weak" });
+});
+
+test("the home folder as ~", () => {
+	expect(home("/home/adam/Music/Mixed")).toBe("~/Music/Mixed");
+	expect(home("C:\\Users\\adam\\Music")).toBe("~\\Music");
+	expect(home("/mnt/music")).toBe("/mnt/music");
+	expect(home(null)).toBe("");
 });

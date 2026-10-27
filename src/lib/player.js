@@ -1,13 +1,15 @@
 // ###################
 // The player: one <audio> element and the queue. Playing a song from a view queues that whole
 // view; shuffle reorders the queue (the playing song stays), repeat is off / all / one.
+// Next on the last song goes back to the first (shuffled again); a song downloaded into the
+// view that's playing joins what's still coming.
 // A song counts as played after 30 s (or half a short one). Volume, shuffle and repeat are
 // remembered on this computer. The system media panel follows along (media.rs)
 // ###################
 
 import { signal, effect } from "arcmoon/reactive";
 import { songUrl, recordPlay, mediaUpdate, onMediaControl } from "./api.js";
-import { nextIndex, previousIndex, shuffleFrom, unshuffle, countsAsPlay } from "./queue.js";
+import { nextIndex, previousIndex, shuffled, shuffleFrom, unshuffle, countsAsPlay, joinNew } from "./queue.js";
 
 const remembered = (key, fallback) => {
 	try {
@@ -40,7 +42,11 @@ export const current = () => loaded();
 export const nowTime = () => audio.currentTime * 1000;
 
 let original = [];   // the queue before shuffling
+let source = null;   // fetches the queue's view again (a download that lands in it joins the queue)
 let counted = false;
+
+// Linux plays through GStreamer, whose plugins may be missing (Windows needs nothing)
+const linux = navigator.userAgent.includes("Linux");
 
 const audio = new Audio();
 audio.preload = "auto";
@@ -73,10 +79,12 @@ const stop = () => {
 	position(0);
 };
 
-// play `list` starting at song number `start` (the list becomes the queue)
-export const playList = (list, start = 0) => {
+// play `list` starting at song number `start` (the list becomes the queue); `from` fetches
+// the view it came from again
+export const playList = (list, start = 0, from = null) => {
 	if (!list.length) return;
 	original = list;
+	source = from;
 	if (shuffle()) {
 		const s = shuffleFrom(list, start);
 		queue(s.list);
@@ -88,11 +96,11 @@ export const playList = (list, start = 0) => {
 };
 
 // play a list in random order (turns shuffle on)
-export const playShuffled = (list) => {
+export const playShuffled = (list, from = null) => {
 	if (!list.length) return;
 	shuffle(true);
 	remember("shuffle", true);
-	playList(list, Math.floor(Math.random() * list.length));
+	playList(list, Math.floor(Math.random() * list.length), from);
 };
 
 // the rest of a big view arrives after its song started: `list` becomes the queue around the
@@ -120,6 +128,12 @@ export const next = (ended = false) => {
 		audio.currentTime = 0;
 		counted = false;
 		return audio.play().catch(() => {});
+	}
+	// back to the first song: with shuffle on, in a new order (the song just heard isn't first)
+	if (i < index() && shuffle()) {
+		const list = shuffled(queue());
+		if (list[0].id === current()?.id) list.push(list.shift());
+		queue(list);
 	}
 	load(i);
 };
@@ -174,6 +188,20 @@ export const removeAt = (i) => {
 	if (i < index()) index(index() - 1);
 };
 export const clearUpcoming = () => queue(queue().slice(0, index() + 1));
+// songs added to the queue's view since it started (a download) join what's still coming
+export const joinQueue = async () => {
+	const from = source;
+	if (!from || !current()) return;
+	const all = await from().catch(() => null);
+	if (!all || from !== source) return;
+	const known = new Set(original.map((s) => s.id));
+	const fresh = all.filter((s) => !known.has(s.id));
+	if (!fresh.length) return;
+	const s = joinNew(queue(), index(), fresh, all, shuffle());
+	original = joinNew(original, -1, fresh, all, false).list;
+	queue(s.list);
+	index(s.index);
+};
 // a deleted song leaves the queue (it's never the one playing)
 export const dropSong = (id) => {
 	if (current()?.id === id) return;
@@ -205,7 +233,7 @@ audio.addEventListener("error", () => {
 	const ext = (current()?.file.split(".").pop() ?? "").toUpperCase();
 	const code = audio.error?.code;
 	// 2: the file couldn't be fetched; 3 / 4: it couldn't be decoded
-	playError(code === 2 ? `Couldn’t load this ${ext} file (is it still on disk?).` : `Can’t play this ${ext} file (error ${code ?? "?"}${audio.error?.message ? `: ${audio.error.message}` : ""}). For MP3 / M4A, install gst-plugins-good and gst-libav.`);
+	playError(code === 2 ? `Couldn’t load this ${ext} file (is it still on disk?).` : `Can’t play this ${ext} file (error ${code ?? "?"}${audio.error?.message ? `: ${audio.error.message}` : ""})${linux ? ". For MP3 / M4A, install gst-plugins-good and gst-libav." : "."}`);
 });
 
 // ###################

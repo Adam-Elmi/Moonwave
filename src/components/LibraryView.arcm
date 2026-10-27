@@ -2,13 +2,15 @@
 # LibraryView: the sidebar, a Zed-like panel (Lists: Recently Added, Most Played and your own,
 # with + for a new one; then the music folders with rescan, remove and a warning when one is
 # gone) and the browse view (its tabs switch Songs / Albums / Artists), once the library has a folder.
-# List and folder rows are drawn by runtime code (no live [for-each] yet)
+# List and folder rows are drawn by runtime code (no live [for-each] yet).
+# On a narrow window the sidebar hides; ☰ in the title bar slides it in over the page (choosing
+# something, a click beside it or Esc closes it)
 # ###################
 [import = BrowseView: "@/components/BrowseView.arcm" !]
 
 runtime ${
   import { effect } from "arcmoon/reactive";
-  import { status, folders, rescan, askRemoveFolder, scanStage, detail, lists, openList, openSmart, newList, openFolder } from "../lib/state.js";
+  import { status, folders, rescan, askRemoveFolder, scanStage, detail, lists, openList, openSmart, newList, openFolder, sideOpen, closeSide } from "../lib/state.js";
   import { count } from "../lib/format.js";
 
   const folderList = ArcMoon.ref(ArcMoon.defineRef("folderList"));
@@ -39,13 +41,21 @@ runtime ${
   const pickFolder = (e) => {
     if (e.target.closest("button")) return;
     const id = e.target.closest("[data-folder]")?.dataset.folder;
-    if (id) openFolder(id);
+    if (id) openFolder(id), closeSide();
   };
   const folderKey = (e) => e.key === "Enter" && pickFolder(e);
   const pickList = (e) => {
     const id = e.target.closest("[data-list]")?.dataset.list;
-    if (id) openList(id);
+    if (id) openList(id), closeSide();
   };
+  const smart = (which) => () => (openSmart(which), closeSide());
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && sideOpen()) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      closeSide();
+    }
+  }, true);
   const smartOn = (which) => detail()?.kind === "smart" && detail().which === which;
 
   const icon = (d) => `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="${d}"/></svg>`;
@@ -100,7 +110,8 @@ runtime ${
 }$
 
 [div = class: "library", data-hidden: runtime ${ folders().length === 0 && (status()?.tracks ?? 0) === 0 }$]
-  [aside = class: "sidebar"]
+  [div = class: "scrim", data-open: runtime ${ sideOpen() }$, onclick: runtime ${ closeSide }$][end]
+  [aside = class: "sidebar", data-open: runtime ${ sideOpen() }$]
 
     [div = class: "section"]
       [h3]Lists[end]
@@ -109,11 +120,11 @@ runtime ${
       [end]
     [end:div]
     [nav = class: "views"]
-      [button = type: "button", data-on: runtime ${ smartOn("recent") }$, onclick: runtime ${ () => openSmart("recent") }$]
+      [button = type: "button", data-on: runtime ${ smartOn("recent") }$, onclick: runtime ${ smart("recent") }$]
         [svg = viewBox: "0 0 16 16", aria-hidden: "true"][circle = cx: "8", cy: "8", r: "5.5" !][path = d: "M8 5v3l2 1.5" !][end]
         Recently Added
       [end]
-      [button = type: "button", data-on: runtime ${ smartOn("played") }$, onclick: runtime ${ () => openSmart("played") }$]
+      [button = type: "button", data-on: runtime ${ smartOn("played") }$, onclick: runtime ${ smart("played") }$]
         [svg = viewBox: "0 0 16 16", aria-hidden: "true"][path = d: "M8 13.5s-5-3-5-6.8A2.7 2.7 0 0 1 8 5a2.7 2.7 0 0 1 5 1.7c0 3.8-5 6.8-5 6.8z" !][end]
         Most Played
       [end]
@@ -128,8 +139,35 @@ runtime ${
 
 [style]
   .library {
+    position: relative;
     display: flex;
     height: 100%;
+  }
+  .scrim {
+    display: none;
+  }
+  @media (max-width: 720px) {
+    .sidebar {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      z-index: 9;
+      width: min(280px, 85%);
+      box-shadow: var(--shadow);
+      transform: translateX(-105%);
+      transition: transform 0.18s ease-out;
+    }
+    .sidebar[data-open] {
+      transform: none;
+    }
+    .scrim[data-open] {
+      position: absolute;
+      inset: 0;
+      z-index: 8;
+      display: block;
+      background: rgb(0 0 0 / 0.3);
+    }
   }
   .library[data-hidden] {
     display: none;

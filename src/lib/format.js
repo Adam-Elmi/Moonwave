@@ -12,6 +12,8 @@ export const duration = (ms) => {
 	return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
 };
 
+// a path with the home folder as ~ (/home/adam/… on Linux, C:\Users\adam\… on Windows)
+export const home = (path) => (path ?? "").replace(/^\/home\/[^/]+|^[A-Za-z]:\\Users\\[^\\]+/, "~");
 export const count = (n, one, many) => `${(n ?? 0).toLocaleString()} ${n === 1 ? one : many}`;
 
 // up to two letters for a placeholder: "The Lanterns" → "TL"

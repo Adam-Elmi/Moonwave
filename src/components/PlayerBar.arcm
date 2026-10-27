@@ -2,6 +2,7 @@
 # PlayerBar: the now-playing bar along the bottom, once something has played (hidden while the
 # Now Playing page is open). Left: the cover, title and artist (click: the Now Playing page). Middle: shuffle, previous, play / pause, next, repeat,
 # and the seek bar with times. Right: volume and the queue button
+# Narrow windows: the song, play / pause, next and the queue, with the seek bar as a line on top
 # ###################
 runtime ${
   import { effect, signal } from "arcmoon/reactive";
@@ -51,7 +52,7 @@ runtime ${
         [svg = viewBox: "0 0 16 16", aria-hidden: "true", data-hide: runtime ${ playing() }$][path = class: "solid", d: "M5 3.2v9.6L13 8z" !][end]
         [svg = viewBox: "0 0 16 16", aria-hidden: "true", data-hide: runtime ${ !playing() }$][path = class: "solid", d: "M4.5 3h2.5v10H4.5zM9 3h2.5v10H9z" !][end]
       [end]
-      [button = class: "small", type: "button", title: "Next (Ctrl+→)", onclick: runtime ${ () => next() }$]
+      [button = class: "small next", type: "button", title: "Next (Ctrl+→)", onclick: runtime ${ () => next() }$]
         [svg = viewBox: "0 0 16 16", aria-hidden: "true"][path = d: "M12 3v10M3 3.5v9L10 8z" !][end]
       [end]
       [button = class: "small", type: "button", title: runtime ${ repeatTitle() }$, data-on: runtime ${ repeat() !== "off" }$, onclick: runtime ${ cycleRepeat }$]
@@ -83,7 +84,7 @@ runtime ${
     gap: 16px;
     height: 58px;
     padding: 0 12px;
-    background: var(--panel);
+    background: var(--dock);
     border-top: 1px solid var(--line-soft);
   }
   .player[data-show] {
@@ -205,13 +206,13 @@ runtime ${
     margin: 0 4px;
     padding: 0;
     color: #fff;
-    background: var(--accent);
+    background: var(--accent-fill);
     border: 0;
     border-radius: 50%;
     cursor: pointer;
   }
   .play:hover {
-    background: var(--accent-hover);
+    background: var(--accent-fill-hover);
   }
   svg {
     width: 14px;
@@ -260,5 +261,39 @@ runtime ${
   .volume {
     flex: 0 1 100px;
     min-width: 60px;
+  }
+
+  /* narrow: the song, play / pause, next and the queue; the seek bar is a thin line along the
+     top edge; shuffle, previous, repeat and volume stay on Now Playing */
+  @media (max-width: 760px) {
+    .player {
+      grid-template-columns: minmax(0, 1fr) minmax(240px, 1.4fr) auto;
+      gap: 10px;
+    }
+    .volume {
+      min-width: 48px;
+    }
+  }
+  @media (max-width: 560px) {
+    .player {
+      position: relative;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      gap: 6px;
+    }
+    .controls .small:not(.next) {
+      display: none;
+    }
+    .seek {
+      position: absolute;
+      top: -9px;
+      right: 0;
+      left: 0;
+      max-width: none;
+    }
+    .seek span,
+    .speaker,
+    .volume {
+      display: none;
+    }
   }
 [end]

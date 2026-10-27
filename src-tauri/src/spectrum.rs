@@ -73,8 +73,8 @@ pub fn spectrum(ffmpeg_dir: Option<&Path>, cache: &Path, id: &str, modified: &st
 			return Ok(bytes);
 		}
 	}
-	let ffmpeg = ffmpeg_dir.map(|d| d.join("ffmpeg")).unwrap_or_else(|| PathBuf::from("ffmpeg"));
-	let mut child = Command::new(ffmpeg)
+	let ffmpeg = ffmpeg_dir.map(|d| d.join(crate::download::exe("ffmpeg"))).unwrap_or_else(|| PathBuf::from("ffmpeg"));
+	let mut child = crate::download::quiet(&mut Command::new(ffmpeg))
 		.args(["-v", "error", "-nostdin", "-i"])
 		.arg(file)
 		.args(["-vn", "-ac", "1", "-ar", &RATE.to_string(), "-f", "f32le", "-"])

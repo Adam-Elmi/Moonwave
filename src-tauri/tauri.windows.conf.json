@@ -1,0 +1,6 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "bundle": {
+    "externalBin": ["binaries/yt-dlp", "binaries/ffmpeg", "binaries/ffprobe", "binaries/deno"]
+  }
+}

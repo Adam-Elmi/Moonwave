@@ -72,7 +72,7 @@ runtime ${
     z-index: 6;
     display: flex;
     flex-direction: column;
-    width: 360px;
+    width: min(360px, 100%);
     max-width: 90%;
     background: var(--panel);
     border-left: 1px solid var(--line-soft);

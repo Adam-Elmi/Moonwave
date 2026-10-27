@@ -196,7 +196,7 @@ runtime ${
     display: none;
     flex-direction: column;
     overflow: hidden;
-    background: var(--bg);
+    background: var(--page);
   }
   .now[data-open] {
     display: flex;
@@ -265,13 +265,20 @@ runtime ${
     min-height: 0;
     padding: 0 32px 28px;
   }
+  /* centered when it fits; when it doesn't, it scrolls from the top (never cut off) */
   .player {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
     min-height: 0;
+    overflow-y: auto;
     text-align: center;
+  }
+  .player > :first-child {
+    margin-top: auto;
+  }
+  .player > :last-child {
+    margin-bottom: auto;
   }
   .art {
     width: min(280px, 38vh);
@@ -448,10 +455,10 @@ runtime ${
     height: 52px;
     border-radius: 50%;
     color: #fff;
-    background: var(--accent);
+    background: var(--accent-fill);
   }
   .controls .play:hover {
-    background: var(--accent-hover);
+    background: var(--accent-fill-hover);
   }
   .play svg {
     width: 20px;
@@ -570,12 +577,59 @@ runtime ${
   }
 
   @media (max-width: 900px) {
+    /* one column: the player keeps its full height, Up Next comes below, the page scrolls */
     .body {
       grid-template-columns: minmax(0, 1fr);
+      grid-auto-rows: max-content;
+      align-content: start;
       overflow-y: auto;
     }
+    .player,
     .next {
       min-height: auto;
+      overflow: visible;
+    }
+  }
+  @media (max-width: 560px) {
+    .top {
+      padding: 8px 10px;
+    }
+    .body {
+      gap: 20px;
+      padding: 0 14px 20px;
+    }
+  }
+  /* short: a smaller cover, no live bars, less space */
+  @media (max-height: 560px) {
+    .art {
+      width: min(180px, 30vh);
+    }
+    h2 {
+      margin-top: 10px;
+      font-size: 17px;
+    }
+    .bars-box {
+      display: none;
+    }
+    .seek {
+      margin-top: 6px;
+    }
+  }
+  /* big: a bigger cover, wider bars and seek, a wider Up Next */
+  @media (min-width: 1400px) and (min-height: 820px) {
+    .body {
+      grid-template-columns: minmax(0, 1fr) clamp(340px, 26vw, 460px);
+    }
+    .art {
+      width: min(420px, 42vh);
+    }
+    h2 {
+      max-width: 720px;
+      font-size: 24px;
+    }
+    .bars-box,
+    .seek {
+      width: min(640px, 100%);
     }
   }
 [end]

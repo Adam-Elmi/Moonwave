@@ -10,11 +10,11 @@
 # ###################
 runtime ${
   import { effect } from "arcmoon/reactive";
-  import { view, detail, search, sort, songs, songTotal, loading, albums, artists, setSearch, setSort, loadMore, openAlbum, openArtist, closeDetail, songsInView, setView, fetching, lists, pickList, askRename, askDeleteList, takeFromList, moveSong, folders, rescan, scanStage } from "../lib/state.js";
-  import { playList, playShuffled, fillQueue, current, playing, openNow } from "../lib/player.js";
+  import { view, detail, search, sort, songs, songTotal, loading, albums, artists, setSearch, setSort, loadMore, openAlbum, openArtist, closeDetail, songsInView, viewSource, playFromView, setView, fetching, lists, pickList, askRename, askDeleteList, takeFromList, moveSong, folders, rescan, scanStage } from "../lib/state.js";
+  import { playList, playShuffled, current, playing, openNow } from "../lib/player.js";
   import { openMenu } from "../lib/menu.js";
   import { songRow, albumCard, artistCard, cover } from "../lib/draw.js";
-  import { count, duration } from "../lib/format.js";
+  import { count, duration, home } from "../lib/format.js";
 
   const songList = ArcMoon.ref(ArcMoon.defineRef("songList"));
   const albumGrid = ArcMoon.ref(ArcMoon.defineRef("albumGrid"));
@@ -116,20 +116,7 @@ runtime ${
 
   // play a song at once and open Now Playing; the whole view (every song, not only those
   // loaded) becomes the queue: right away on a page, a moment later for a big view
-  const playRow = (row) => {
-    const id = row?.dataset.id;
-    const loaded = songs();
-    const at = loaded.findIndex((s) => s.id === id);
-    if (at < 0) return;
-    const whole = detail() && detail().kind !== "folder";
-    playList(whole ? loaded : [loaded[at]], whole ? at : 0);
-    openNow();
-    if (!whole)
-      songsInView().then((all) => {
-        const i = all.findIndex((s) => s.id === id);
-        if (i >= 0) fillQueue(all, i);
-      }, () => {});
-  };
+  const playRow = (row) => playFromView(row?.dataset.id) && openNow();
   const songAt = (row) => songs().find((s) => s.id === row?.dataset.id);
 
   const context = (e) => {
@@ -166,9 +153,9 @@ runtime ${
   const pageSongs = async () => (detail()?.kind === "folder" ? songsInView() : songs());
   const playAll = async () => {
     const all = await pageSongs();
-    if (all.length) playList(all, 0);
+    if (all.length) playList(all, 0, viewSource());
   };
-  const shuffleAll = async () => playShuffled(await pageSongs());
+  const shuffleAll = async () => playShuffled(await pageSongs(), viewSource());
   const addAll = async () => {
     const all = await pageSongs();
     if (all.length) pickList(all.map((s) => s.id));
@@ -244,13 +231,13 @@ runtime ${
     if (d.kind === "folder") {
       const f = thisFolder();
       if (!f) return "";
-      return f.exists ? `${count(songTotal(), "song", "songs")} · ${f.path.replace(/^\/home\/[^/]+/, "~")}` : `${f.path} can’t be found`;
+      return f.exists ? `${count(songTotal(), "song", "songs")} · ${home(f.path)}` : `${f.path} can’t be found`;
     }
     if (d.kind === "smart") return d.which === "recent" ? "The 100 newest songs in your library" : songs().length ? "The songs you play most" : "Songs show up here once you’ve played them";
     return [count(songTotal(), "song", "songs"), albums().length ? count(albums().length, "album", "albums") : ""].filter(Boolean).join(" · ");
   };
   const emptyText = () => {
-    if (loading()) return "";
+    if (loading() || fetching() > 0) return "";   // never "nothing here" while it's still coming
     if (isList()) return "This list is empty. Right-click songs and choose Add to List.";
     if (detail()?.kind === "folder") return "No songs in this folder yet. Download one here, or add files and Rescan.";
     if (detail()?.kind === "smart") return detail().which === "played" ? "Nothing played yet." : "No songs yet.";
@@ -267,15 +254,15 @@ runtime ${
   [div = class: "tabs", role: "tablist"]
     [button = class: "tab", type: "button", role: "tab", data-view: "songs", data-on: runtime ${ !detail() && view() === "songs" }$, onclick: runtime ${ () => setView("songs") }$]
       [svg = viewBox: "0 0 16 16", aria-hidden: "true"][path = d: "M6 12V4l7-1.5v8M6 12a2 2 0 1 1-2-2 2 2 0 0 1 2 2zM13 10.5a2 2 0 1 1-2-2 2 2 0 0 1 2 2z" !][end]
-      Songs
+      [span = class: "label"]Songs[end]
     [end]
     [button = class: "tab", type: "button", role: "tab", data-view: "albums", data-on: runtime ${ !detail() && view() === "albums" }$, onclick: runtime ${ () => setView("albums") }$]
       [svg = viewBox: "0 0 16 16", aria-hidden: "true"][rect = x: "2.5", y: "2.5", width: "11", height: "11", rx: "1.5" !][circle = cx: "8", cy: "8", r: "2.5" !][end]
-      Albums
+      [span = class: "label"]Albums[end]
     [end]
     [button = class: "tab", type: "button", role: "tab", data-view: "artists", data-on: runtime ${ !detail() && view() === "artists" }$, onclick: runtime ${ () => setView("artists") }$]
       [svg = viewBox: "0 0 16 16", aria-hidden: "true"][circle = cx: "8", cy: "5.5", r: "2.5" !][path = d: "M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4" !][end]
-      Artists
+      [span = class: "label"]Artists[end]
     [end]
     [div = class: "tab page", role: "tab", data-on: "", data-show: runtime ${ detail() !== null }$]
       [small]runtime ${ pageKind() }$[end]
@@ -294,13 +281,16 @@ runtime ${
       [input = type: "search", placeholder: "Search songs, artists and albums", arcm-ref: "search", aria-label: "Search", oninput: runtime ${ (e) => setSearch(e.target.value) }$ !]
     [end:label]
     [span = class: "shown"]runtime ${ shown() }$[end]
-    [select = class: "sort", aria-label: "Sort", data-hide: runtime ${ showing() !== "songs" }$, onchange: runtime ${ (e) => setSort(e.target.value) }$]
+    [label = class: "sortbox", title: "Sort", data-hide: runtime ${ showing() !== "songs" }$]
+      [svg = viewBox: "0 0 16 16", aria-hidden: "true"][path = d: "M4.5 3v10M2.5 11l2 2 2-2M8.5 4.5h5M8.5 8h3.5M8.5 11.5h2" !][end]
+    [select = class: "sort", aria-label: "Sort", onchange: runtime ${ (e) => setSort(e.target.value) }$]
       [option = value: "title"]Title[end]
       [option = value: "artist"]Artist[end]
       [option = value: "album"]Album[end]
       [option = value: "recent"]Recently Added[end]
       [option = value: "length"]Longest[end]
     [end:select]
+    [end:label]
   [end:div]
 
   [div = class: "scroll", arcm-ref: "scroller", onclick: runtime ${ pick }$, onkeydown: runtime ${ key }$]
@@ -347,7 +337,7 @@ runtime ${
     flex: 1;
     flex-direction: column;
     min-width: 0;
-    background: var(--bg);
+    background: var(--page);
   }
   [data-hide] {
     display: none !important;
@@ -392,7 +382,7 @@ runtime ${
   }
   .tab[data-on] {
     color: var(--ink);
-    background: var(--bg);
+    background: var(--page-top);
     border-bottom-color: transparent;
   }
   .tab[data-on] svg {
@@ -516,6 +506,13 @@ runtime ${
     white-space: nowrap;
     color: var(--muted);
   }
+  .sortbox {
+    position: relative;
+    display: flex;
+  }
+  .sortbox svg {
+    display: none;
+  }
   .sort {
     height: 28px;
     padding: 0 8px;
@@ -594,11 +591,11 @@ runtime ${
   }
   .actions .pill {
     color: #fff;
-    background: var(--accent);
+    background: var(--accent-fill);
     border-color: transparent;
   }
   .actions .pill:hover:not(:disabled) {
-    background: var(--accent-hover);
+    background: var(--accent-fill-hover);
   }
   .actions .danger {
     color: var(--error);
@@ -833,6 +830,58 @@ runtime ${
     background: var(--control-hover);
   }
   /* narrow windows: title and time only (the line under the title shows artist · album) */
+  /* narrow windows: the count goes, the sort becomes an icon, tighter edges; then the tabs keep
+     only their icons and albums come two in a row */
+  @media (max-width: 560px) {
+    .toolbar {
+      padding: 8px 10px 6px;
+    }
+    .scroll {
+      padding: 4px 10px 16px;
+    }
+    .shown {
+      display: none;
+    }
+    .search {
+      max-width: none;
+    }
+    .sortbox svg {
+      position: absolute;
+      top: 7px;
+      left: 9px;
+      display: block;
+      color: var(--ink);
+      pointer-events: none;
+    }
+    .sort {
+      width: 32px;
+      padding: 0;
+      color: transparent;
+      appearance: none;
+    }
+    .sort option {
+      color: var(--ink);
+      background: var(--surface);
+    }
+    .page-head {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+  }
+  @media (max-width: 420px) {
+    .tab {
+      padding: 0 12px;
+    }
+    .tab .label {
+      display: none;
+    }
+    .tab.page {
+      flex: 1;
+    }
+    .grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
   @media (max-width: 860px) {
     .list :global(.song) {
       grid-template-columns: 24px minmax(0, 1fr) 48px 24px;
